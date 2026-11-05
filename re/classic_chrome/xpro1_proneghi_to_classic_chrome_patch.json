@@ -1,0 +1,424 @@
+{
+ "strategy": "data-only: PRO Neg Hi slot becomes Classic Chrome (menu/EXIF still say PRO Neg Hi)",
+ "ops": [
+  {
+   "item": "3x3 colour matrix sRGB m00",
+   "confidence": "high",
+   "param_id": "0xdb4b",
+   "adjust_area": {
+    "not_space_file_offset": "0xaedda7",
+    "old": "5504",
+    "new": "8d05",
+    "raw_file_old": "aafb",
+    "raw_file_new": "72fa"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x81ffbb",
+    "old": "5504",
+    "new": "8d05"
+   }
+  },
+  {
+   "item": "3x3 colour matrix sRGB m01",
+   "confidence": "high",
+   "param_id": "0xdb4d",
+   "adjust_area": {
+    "not_space_file_offset": "0xaedda9",
+    "old": "661f",
+    "new": "c81e",
+    "raw_file_old": "99e0",
+    "raw_file_new": "37e1"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x81ffbd",
+    "old": "661f",
+    "new": "c81e"
+   }
+  },
+  {
+   "item": "3x3 colour matrix sRGB m02",
+   "confidence": "high",
+   "param_id": "0xdb4f",
+   "adjust_area": {
+    "not_space_file_offset": "0xaeddab",
+    "old": "4500",
+    "new": "ab1f",
+    "raw_file_old": "baff",
+    "raw_file_new": "54e0"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x81ffbf",
+    "old": "4500",
+    "new": "ab1f"
+   }
+  },
+  {
+   "item": "3x3 colour matrix sRGB m10",
+   "confidence": "high",
+   "param_id": "0xdb51",
+   "adjust_area": {
+    "not_space_file_offset": "0xaeddad",
+    "old": "0400",
+    "new": "dd1f",
+    "raw_file_old": "fbff",
+    "raw_file_new": "22e0"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x81ffc1",
+    "old": "0400",
+    "new": "dd1f"
+   }
+  },
+  {
+   "item": "3x3 colour matrix sRGB m11",
+   "confidence": "high",
+   "param_id": "0xdb53",
+   "adjust_area": {
+    "not_space_file_offset": "0xaeddaf",
+    "old": "6304",
+    "new": "1104",
+    "raw_file_old": "9cfb",
+    "raw_file_new": "eefb"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x81ffc3",
+    "old": "6304",
+    "new": "1104"
+   }
+  },
+  {
+   "item": "3x3 colour matrix sRGB m12",
+   "confidence": "high",
+   "param_id": "0xdb55",
+   "adjust_area": {
+    "not_space_file_offset": "0xaeddb1",
+    "old": "991f",
+    "new": "1200",
+    "raw_file_old": "66e0",
+    "raw_file_new": "edff"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x81ffc5",
+    "old": "991f",
+    "new": "1200"
+   }
+  },
+  {
+   "item": "3x3 colour matrix sRGB m20",
+   "confidence": "high",
+   "param_id": "0xdb57",
+   "adjust_area": {
+    "not_space_file_offset": "0xaeddb3",
+    "old": "7700",
+    "new": "6b00",
+    "raw_file_old": "88ff",
+    "raw_file_new": "94ff"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x81ffc7",
+    "old": "7700",
+    "new": "6b00"
+   }
+  },
+  {
+   "item": "3x3 colour matrix sRGB m21",
+   "confidence": "high",
+   "param_id": "0xdb59",
+   "adjust_area": {
+    "not_space_file_offset": "0xaeddb5",
+    "old": "741f",
+    "new": "351f",
+    "raw_file_old": "8be0",
+    "raw_file_new": "cae0"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x81ffc9",
+    "old": "741f",
+    "new": "351f"
+   }
+  },
+  {
+   "item": "3x3 colour matrix sRGB m22",
+   "confidence": "high",
+   "param_id": "0xdb5b",
+   "adjust_area": {
+    "not_space_file_offset": "0xaeddb7",
+    "old": "1504",
+    "new": "5f04",
+    "raw_file_old": "eafb",
+    "raw_file_new": "a0fb"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x81ffcb",
+    "old": "1504",
+    "new": "5f04"
+   }
+  },
+  {
+   "item": "3x3 colour matrix alt-colour-space m00",
+   "confidence": "low",
+   "param_id": "0xdba5",
+   "adjust_area": {
+    "not_space_file_offset": "0xaede01",
+    "old": "2c04",
+    "new": "5504",
+    "raw_file_old": "d3fb",
+    "raw_file_new": "aafb"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x820015",
+    "old": "2c04",
+    "new": "5504"
+   }
+  },
+  {
+   "item": "3x3 colour matrix alt-colour-space m01",
+   "confidence": "low",
+   "param_id": "0xdba7",
+   "adjust_area": {
+    "not_space_file_offset": "0xaede03",
+    "old": "f91f",
+    "new": "1101",
+    "raw_file_old": "06e0",
+    "raw_file_new": "eefe"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x820017",
+    "old": "f91f",
+    "new": "1101"
+   }
+  },
+  {
+   "item": "3x3 colour matrix alt-colour-space m02",
+   "confidence": "low",
+   "param_id": "0xdba9",
+   "adjust_area": {
+    "not_space_file_offset": "0xaede05",
+    "old": "db1f",
+    "new": "9a1e",
+    "raw_file_old": "24e0",
+    "raw_file_new": "65e1"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x820019",
+    "old": "db1f",
+    "new": "9a1e"
+   }
+  },
+  {
+   "item": "3x3 colour matrix alt-colour-space m10",
+   "confidence": "low",
+   "param_id": "0xdbab",
+   "adjust_area": {
+    "not_space_file_offset": "0xaede07",
+    "old": "ca1f",
+    "new": "3500",
+    "raw_file_old": "35e0",
+    "raw_file_new": "caff"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x82001b",
+    "old": "ca1f",
+    "new": "3500"
+   }
+  },
+  {
+   "item": "3x3 colour matrix alt-colour-space m11",
+   "confidence": "low",
+   "param_id": "0xdbad",
+   "adjust_area": {
+    "not_space_file_offset": "0xaede09",
+    "old": "9704",
+    "new": "2604",
+    "raw_file_old": "68fb",
+    "raw_file_new": "d9fb"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x82001d",
+    "old": "9704",
+    "new": "2604"
+   }
+  },
+  {
+   "item": "3x3 colour matrix alt-colour-space m12",
+   "confidence": "low",
+   "param_id": "0xdbaf",
+   "adjust_area": {
+    "not_space_file_offset": "0xaede0b",
+    "old": "9f1f",
+    "new": "a51f",
+    "raw_file_old": "60e0",
+    "raw_file_new": "5ae0"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x82001f",
+    "old": "9f1f",
+    "new": "a51f"
+   }
+  },
+  {
+   "item": "3x3 colour matrix alt-colour-space m20",
+   "confidence": "low",
+   "param_id": "0xdbb1",
+   "adjust_area": {
+    "not_space_file_offset": "0xaede0d",
+    "old": "5d00",
+    "new": "7f00",
+    "raw_file_old": "a2ff",
+    "raw_file_new": "80ff"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x820021",
+    "old": "5d00",
+    "new": "7f00"
+   }
+  },
+  {
+   "item": "3x3 colour matrix alt-colour-space m21",
+   "confidence": "low",
+   "param_id": "0xdbb3",
+   "adjust_area": {
+    "not_space_file_offset": "0xaede0f",
+    "old": "a01f",
+    "new": "291f",
+    "raw_file_old": "5fe0",
+    "raw_file_new": "d6e0"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x820023",
+    "old": "a01f",
+    "new": "291f"
+   }
+  },
+  {
+   "item": "3x3 colour matrix alt-colour-space m22",
+   "confidence": "low",
+   "param_id": "0xdbb5",
+   "adjust_area": {
+    "not_space_file_offset": "0xaede11",
+    "old": "0304",
+    "new": "5804",
+    "raw_file_old": "fcfb",
+    "raw_file_new": "a7fb"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x820025",
+    "old": "0304",
+    "new": "5804"
+   }
+  },
+  {
+   "item": "2x2 chroma matrix m00(a)",
+   "confidence": "high",
+   "param_id": "0xe3c9",
+   "adjust_area": {
+    "not_space_file_offset": "0xaee625",
+    "old": "2606",
+    "new": "d603",
+    "raw_file_old": "d9f9",
+    "raw_file_new": "29fc"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x820839",
+    "old": "2606",
+    "new": "d603"
+   }
+  },
+  {
+   "item": "2x2 chroma matrix m11(d)",
+   "confidence": "high",
+   "param_id": "0xe3cb",
+   "adjust_area": {
+    "not_space_file_offset": "0xaee627",
+    "old": "2007",
+    "new": "4404",
+    "raw_file_old": "dff8",
+    "raw_file_new": "bbfb"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x82083b",
+    "old": "2007",
+    "new": "4404"
+   }
+  },
+  {
+   "item": "2x2 chroma matrix m01(b)",
+   "confidence": "high",
+   "param_id": "0xe3cd",
+   "adjust_area": {
+    "not_space_file_offset": "0xaee629",
+    "old": "b01f",
+    "new": "2300",
+    "raw_file_old": "4fe0",
+    "raw_file_new": "dcff"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x82083d",
+    "old": "b01f",
+    "new": "2300"
+   }
+  },
+  {
+   "item": "2x2 chroma matrix m10(c)",
+   "confidence": "high",
+   "param_id": "0xe3cf",
+   "adjust_area": {
+    "not_space_file_offset": "0xaee62b",
+    "old": "d000",
+    "new": "1000",
+    "raw_file_old": "2fff",
+    "raw_file_new": "efff"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x82083f",
+    "old": "d000",
+    "new": "1000"
+   }
+  },
+  {
+   "item": "detail preset (00f2ccb8/FUN_00f2c044) NegHi -> PROVIA value",
+   "confidence": "high",
+   "param_id": "0xffc6",
+   "adjust_area": {
+    "not_space_file_offset": "0xaf0222",
+    "old": "03",
+    "new": "01",
+    "raw_file_old": "fc",
+    "raw_file_new": "fe"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x822436",
+    "old": "03",
+    "new": "01"
+   }
+  },
+  {
+   "item": "H/S tone family plane0 (00f32c08) NegHi -> PROVIA value",
+   "confidence": "high",
+   "param_id": "0xe13b",
+   "adjust_area": {
+    "not_space_file_offset": "0xaee397",
+    "old": "02",
+    "new": "01",
+    "raw_file_old": "fd",
+    "raw_file_new": "fe"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x8205ab",
+    "old": "02",
+    "new": "01"
+   }
+  },
+  {
+   "item": "tone curve: X-Pro1 curve #27 (PRO Neg Hi) body := X-E2 curve #38 (Classic Chrome)",
+   "confidence": "high",
+   "blob1": {
+    "blob1_addr": "0x80be98",
+    "length": "0x48",
+    "old": "1b00000002020304050505060600000039001e010102ea02f9030f053f079e09e50b7b10d7142d18171ee7215525b6287b2be72d5730fb31ab33fd36bc39013c383ec23fff3f0000",
+    "new": "1b0000000202030405050506060000008600530153025103650476059c07cf09f20b761047148517031eef22b1266f2afb2c352f77311033963485378a39733b1b3dc23eff3f0000",
+    "note": "blob1 is LZ-compressed in FPUPDATE.DAT: patch decompressed blob1, re-encode (fits: 0x13bbe0 <= 0x140000)"
+   }
+  }
+ ]
+}

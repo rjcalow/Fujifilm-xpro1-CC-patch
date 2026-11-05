@@ -1,0 +1,99 @@
+X-E2 FWUP0004 (blob2 @0xf6a9c0): every parameter-ID table indexed by colour mode (recctl+0x108).
+Colour mode: 0 PROVIA/STD, 1 CHROME(unused), 2 mono, 3 sepia, 4 Velvia, 5 ASTIA, 6 PRO Neg Std, 7 PRO Neg Hi, 8 CLASSIC CHROME, 9 (spare)
+value = DB[id] where DB = adjustment area (file offset 0xe025c + id in the NOT-ed image)
+
+== 0x1467364 (010ada9c) idx = cm + (+0x10c)*10 : 2x2 chroma-matrix preset (row1 = colour-space alt)
+   row0 ids  b0c7 b0c7 b0c7 b0c7 b0c8 b0c9 b0ca b0cb cec2 cec3
+   row0 vals    1    1    1    1    2    3    4    5   11   12    <- CC (col 8): id 0xcec2 = 11
+   row1 ids  b0cc b0cc b0cc b0cc b0cd b0ce b0cf b0d0 cec4 cec5
+   row1 vals    6    6    6    6    7    8    9   10   13   14    <- CC (col 8): id 0xcec4 = 13
+== 0x1467170 (010ada9c) idx = cm + (+0x10c)*10 [scene 0x17] : 2x2 chroma-matrix preset, scene 0x17
+   row0 ids  b0c8 b0c8 b0c8 b0c8 b0c8 b0c8 b0c8 b0c8 b0c8 b0c8
+   row0 vals    2    2    2    2    2    2    2    2    2    2    <- CC (col 8): id 0xb0c8 = 2
+   row1 ids  b0cd b0cd b0cd b0cd b0cd b0cd b0cd b0cd b0cd b0cd
+   row1 vals    7    7    7    7    7    7    7    7    7    7    <- CC (col 8): id 0xb0cd = 7
+== 0x1469b68 (010b22c0) idx = cm + (+0x10c)*10 : 3x3 colour-matrix preset
+   row0 ids  ae2b ae2b ae30 ae34 ae2c ae2d ae2e ae2f ce94 ce95
+   row0 vals    1    1    1    1    2    3    4    5    9   10    <- CC (col 8): id 0xce94 = 9
+   row1 ids  ae35 ae35 ae3a ae3e ae36 ae37 ae38 ae39 ce96 ce97
+   row1 vals   11   11    1    1   12   13   14   15   16   17    <- CC (col 8): id 0xce96 = 16
+== 0x1468ca8 (010b22c0) idx = cm + (+0x10c)*10 [scene 0x17] : 3x3 colour-matrix preset, scene 0x17
+   row0 ids  ae2c ae2c ae30 ae34 ae2c ae2c ae2c ae2c ae2c ae2c
+   row0 vals    2    2    1    1    2    2    2    2    2    2    <- CC (col 8): id 0xae2c = 2
+   row1 ids  ae36 ae36 ae3a ae3e ae36 ae36 ae36 ae36 ae36 ae36
+   row1 vals   12   12    1    1   12   12   12   12   12   12    <- CC (col 8): id 0xae36 = 12
+== 0x14671fc (010ae77c) idx = cm + (+0x10c)*10 : detail/edge preset (4 bytes @0x1466efc + 10 u16 @0x1466e5c per preset)
+   row0 ids  b3fd b3fd b3fd b3fd b3fe b3ff b400 b401 ceca cecb
+   row0 vals    1    1    1    1    2    1    3    3    1    3    <- CC (col 8): id 0xceca = 1
+   row1 ids  b402 b402 b402 b402 b403 b404 b405 b406 cecc cecd
+   row1 vals    2    2    2    2    2    1    3    3    3    3    <- CC (col 8): id 0xcecc = 3
+== 0x1466f8c (010adc00) idx = cm : chroma gain preset
+   row0 ids  b0f4 b0f4 b0f4 b0f4 b0f5 b0f6 b0f7 b0f8 cec6 cec7
+   row0 vals    1    1    1    1    2    2    2    2    1    2    <- CC (col 8): id 0xcec6 = 1
+== 0x1467dd0 (010afa00) idx = cm : NR/edge gain (0x40=1.0), modes in mask 0x3f1
+   row0 ids  ba8a ba8a ba8a ba8a ba8b ba8c ba8d ba8e ced0 ced1
+   row0 vals   64   64   64   64   64   64   64   64   64   64    <- CC (col 8): id 0xced0 = 64
+== 0x1467de4 (010afa00) idx = cm : NR/edge gain (0x40=1.0)
+   row0 ids  ba8f ba8f ba8f ba8f ba90 ba91 ba92 ba93 ced2 ced3
+   row0 vals   64   64   64   64   64   64   64   64   64   64    <- CC (col 8): id 0xced2 = 64
+== 0x14684d0 (010affc0) idx = cm : gain (0x40=1.0)
+   row0 ids  c0f1 c0f1 c0f4 c0f5 c0f0 c0f1 c0f2 c0f3 ced6 ced7
+   row0 vals   64   64   64   64   64   64   64   64   64   64    <- CC (col 8): id 0xced6 = 64
+== 0x1469ef4 (010b3764) idx = cm (modes 2..9) : chroma/saturation gain factor (0x40=1.0)
+   row0 ids  a9cd a9cd a9d0 a9d1 a9cc a9cd a9ce a9cf ce90 ce91
+   row0 vals   64   64   64   64   64   64   64   64   64   64    <- CC (col 8): id 0xce90 = 64
+== 0x146a384 (010b40b0) idx = cm + fmt*10 : H/S tone family index
+   row0 ids  d4af d4af d4b7 d4b6 d4b0 d4b1 d4b2 d4b3 d4b4 d4b5
+   row0 vals    1    1    1    1    2    2    2    2    1    1    <- CC (col 8): id 0xd4b4 = 1
+   row1 ids  d4b8 d4b8 d4c0 d4bf d4b9 d4ba d4bb d4bc d4bd d4be
+   row1 vals    3    3    3    3    3    3    3    3    3    3    <- CC (col 8): id 0xd4bd = 3
+   row2 ids  d4ca d4ca d4d2 d4d1 d4cb d4cc d4cd d4ce d4cf d4d0
+   row2 vals    4    4    4    4    5    5    5    5    4    4    <- CC (col 8): id 0xd4cf = 4
+   row3 ids  d4c1 d4c1 d4c9 d4c8 d4c2 d4c3 d4c4 d4c5 d4c6 d4c7
+   row3 vals    3    3    3    3    3    3    3    3    3    3    <- CC (col 8): id 0xd4c6 = 3
+   row4 ids  d4dc d4dc d4e4 d4e3 d4dd d4de d4df d4e0 d4e1 d4e2
+   row4 vals    3    3    3    3    3    3    3    3    3    3    <- CC (col 8): id 0xd4e1 = 3
+== 0x1469f8c (010b40b0) idx = cm (fmt 4, +0x128==7) : H/S tone family index (special)
+   row0 ids  d4e5 d4e5 d4ed d4ec d4e6 d4e7 d4e8 d4e9 d4ea d4eb
+   row0 vals    3    3    3    3    3    3    3    3    3    3    <- CC (col 8): id 0xd4ea = 3
+== 0x146a150 (010b40b0) idx = cm (fmt 2, +0x128==7) : H/S tone family index (special)
+   row0 ids  d4d3 d4d3 d4db d4da d4d4 d4d5 d4d6 d4d7 d4d8 d4d9
+   row0 vals    5    5    5    5    5    5    5    5    5    5    <- CC (col 8): id 0xd4d8 = 5
+== 0x1469f28 (010b440c) idx = cm + fmt*10 : preset index (6-col table @0x146a164)
+   row0 ids  cf85 cf85 cf8c cf8d cf86 cf87 cf88 cf89 cf8a cf8b
+   row0 vals    1    1    1    1    1    1    1    1    1    1    <- CC (col 8): id 0xcf8a = 1
+   row1 ids  cfb9 cfb9 cfc0 cfc1 cfba cfbb cfbc cfbd cfbe cfbf
+   row1 vals    1    1    1    1    1    1    1    1    1    1    <- CC (col 8): id 0xcfbe = 1
+   row2 ids  cfed cfed cff4 cff5 cfee cfef cff0 cff1 cff2 cff3
+   row2 vals    1    1    1    1    1    1    1    1    1    1    <- CC (col 8): id 0xcff2 = 1
+   row3 ids  d021 d021 d028 d029 d022 d023 d024 d025 d026 d027
+   row3 vals    1    1    1    1    1    1    1    1    1    1    <- CC (col 8): id 0xd026 = 1
+   row4 ids  d021 d021 d028 d029 d022 d023 d024 d025 d026 d027
+   row4 vals    1    1    1    1    1    1    1    1    1    1    <- CC (col 8): id 0xd026 = 1
+
+== tone-curve preset tables (010b28a0), layout [plane 0..3][colour mode 0..9][level 0..4], idx = cm*5 + plane*0x32 + (+0xf8)
+   table 0x14695e8
+     plane0 level0 per cm: [1, 1, 1, 1, 2, 3, 4, 5, 59, 1]   CC(cm8) ids ['0xd680', '0xd67f', '0xd67f', '0xd67f', '0xd681']
+     plane1 level0 per cm: [11, 11, 11, 11, 12, 13, 14, 15, 59, 11]   CC(cm8) ids ['0xd700', '0xd6ff', '0xd6ff', '0xd6ff', '0xd701']
+     plane2 level0 per cm: [21, 21, 21, 21, 22, 23, 24, 25, 59, 21]   CC(cm8) ids ['0xd780', '0xd77f', '0xd77f', '0xd77f', '0xd781']
+     plane3 level0 per cm: [11, 11, 11, 11, 12, 13, 14, 15, 59, 11]   CC(cm8) ids ['0xd800', '0xd7ff', '0xd7ff', '0xd7ff', '0xd801']
+   table 0x14693f4
+     plane0 level0 per cm: [1, 1, 1, 1, 2, 3, 4, 5, 59, 1]   CC(cm8) ids ['0xd683', '0xd682', '0xd682', '0xd682', '0xd684']
+     plane1 level0 per cm: [11, 11, 11, 11, 12, 13, 14, 15, 59, 11]   CC(cm8) ids ['0xd703', '0xd702', '0xd702', '0xd702', '0xd704']
+     plane2 level0 per cm: [21, 21, 21, 21, 22, 23, 24, 25, 59, 21]   CC(cm8) ids ['0xd783', '0xd782', '0xd782', '0xd782', '0xd784']
+     plane3 level0 per cm: [11, 11, 11, 11, 12, 13, 14, 15, 59, 11]   CC(cm8) ids ['0xd803', '0xd802', '0xd802', '0xd802', '0xd804']
+   tone preset -> curve#: curve = DB[ 0x1469840[(preset-1)*6 + k] ]  (k = func_0x009ec188 result 0..5)
+     preset  1: ids ['0xd4f9', '0xd4fa', '0xd4fb', '0xd4fc', '0xd4fd', '0xd4fe'] curves [1, 1, 1, 1, 1, 1]
+     preset  2: ids ['0xd4ff', '0xd500', '0xd501', '0xd502', '0xd503', '0xd504'] curves [5, 7, 8, 9, 9, 9]
+     preset  3: ids ['0xd505', '0xd506', '0xd507', '0xd508', '0xd509', '0xd50a'] curves [10, 12, 13, 14, 14, 14]
+     preset  4: ids ['0xd50b', '0xd50c', '0xd50d', '0xd50e', '0xd50f', '0xd510'] curves [15, 17, 18, 19, 19, 19]
+     preset  5: ids ['0xd511', '0xd512', '0xd513', '0xd514', '0xd515', '0xd516'] curves [20, 22, 23, 24, 24, 24]
+     preset 11: ids ['0xd535', '0xd536', '0xd537', '0xd538', '0xd539', '0xd53a'] curves [1, 1, 1, 1, 1, 1]
+     preset 12: ids ['0xd53b', '0xd53c', '0xd53d', '0xd53e', '0xd53f', '0xd540'] curves [6, 6, 6, 6, 6, 6]
+     preset 13: ids ['0xd541', '0xd542', '0xd543', '0xd544', '0xd545', '0xd546'] curves [11, 11, 11, 11, 11, 11]
+     preset 14: ids ['0xd547', '0xd548', '0xd549', '0xd54a', '0xd54b', '0xd54c'] curves [16, 16, 16, 16, 16, 16]
+     preset 15: ids ['0xd54d', '0xd54e', '0xd54f', '0xd550', '0xd551', '0xd552'] curves [21, 21, 21, 21, 21, 21]
+     preset 21: ids ['0xd571', '0xd572', '0xd573', '0xd574', '0xd575', '0xd576'] curves [16, 16, 16, 16, 16, 16]
+     preset 59: ids ['0xd655', '0xd656', '0xd657', '0xd658', '0xd659', '0xd65a'] curves [38, 38, 38, 38, 38, 38]
+
+== mono filter 3x3 preset table 0x1469018 idx = (+0x114 filter) + (+0x10c)*4 (Ye=1,R=2,G=3): not used by CC

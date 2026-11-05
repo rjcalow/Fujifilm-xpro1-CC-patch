@@ -1,0 +1,41 @@
+# --- Fujifilm firmware: copyrighted, never commit -------------------------------
+# Official update files (X-Pro1 FPUPDATE.DAT, X-E2/X-Pro2 FWUP*.DAT) and anything built from them.
+*.DAT
+*.dat
+*.bin
+re/build/
+
+# Decompiled Fujifilm code (derived from the firmware)
+re/decompiled/
+*.c.gz
+*.asm
+
+# Unpack / analysis working directories (see re/tools/unpack.sh, README_ghidra.md)
+work/
+x4/
+x2/
+unpacked/
+gproj/
+*.gpr
+*.rep/
+
+# --- Personal photos ------------------------------------------------------------
+samples/
+*.JPG
+*.jpg
+*.RAF
+
+# --- Tooling ----------------------------------------------------------------------
+__pycache__/
+*.pyc
+.venv/
+venv/
+dl/
+*.log
+
+# --- Editors / OS -----------------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+*~
+*.swp
