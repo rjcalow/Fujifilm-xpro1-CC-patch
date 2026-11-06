@@ -41,6 +41,8 @@ for k,ID in enumerate(ids_a): setdb(ID,struct.pack('<H',enc13(CC_a.flat[k])),f'3
 for ID,v,nm in zip(ids_2,(CC_2[0,0],CC_2[1,1],CC_2[0,1],CC_2[1,0]),('m00','m11','m01','m10')): setdb(ID,struct.pack('<H',enc13(v)),f'2x2 chroma (preset 5) {nm}')
 setdb(0xffc6,bytes([1]),'detail preset NegHi -> PROVIA value (1)')
 setdb(0xe13b,bytes([1]),'H/S tone family plane0 NegHi -> PROVIA value (1)')
+# v2: chroma gain preset (FUN_00f2c8fc, table 0xf2df08[4]); X-E2 CC uses preset 1 (= PROVIA, x1.00), NegHi had 2 (up to x1.15)
+setdb(0xe4ec,bytes([1]),'chroma gain preset NegHi -> PROVIA value (1)')
 # --- tone: put X-E2 curve #38 into the unreferenced X-Pro1 slot holding curve #40, point NegHi tone IDs at 38
 slot=None
 for k in range(29):

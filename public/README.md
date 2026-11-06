@@ -13,13 +13,13 @@ Chrome in a firmware update.
 | | |
 |---|---|
 | Camera / firmware | X-Pro1, official firmware 3.82 only |
-| Tested | 1 camera: flashes, boots, shoots normally; the look is applied |
+| Tested | v1: 1 camera, flashes, boots, shoots normally, the look is applied. **v2** (current, adds the chroma-gain fix) is statically verified, not yet flashed |
 | Selecting it | choose **PRO Neg. Hi**. The menu, icon and EXIF still say "PRO Neg. Hi" |
 | Other film simulations | unchanged (byte-identical) |
-| Known difference from real Classic Chrome | **blues/cyans are not muted enough** (a blue-grey fence stays teal); warm colours and greens are muted as expected |
+| Known difference from real Classic Chrome | v1: colours (strong reds especially) a little too saturated, because PRO Neg. Hi's extra chroma gain (up to ×1.15) was left in place. Fixed in v2. Blues/cyans were also not muted enough in v1; re-check on v2 |
 | Original PRO Neg. Hi | lost while the patch is installed; re-flash the official file to get it back |
 
-Measured on the test camera against PROVIA (same scene, same camera): saturation of foliage, grass and brick is down
+v1 measured on the test camera against PROVIA (same scene, same camera): saturation of foliage, grass and brick is down
 about 18–21%, and blues are unchanged. An X-T20 shooting real Classic Chrome renders blues much greyer.
 
 ## What you need
@@ -32,8 +32,15 @@ about 18–21%, and blues are unchanged. An X-T20 shooting real Classic Chrome r
 python3 xpro1_cc_patch.py FPUPDATE.DAT patched/FPUPDATE.DAT
 ```
 The script refuses any input other than the official 3.82 file. It checks every value it replaces, re-compresses
-and decodes back, fixes the checksum, and only writes the output if it is byte-identical to the camera-tested build
-(SHA-256 `fb0dc86b2f9e4fd49e8aa0714ee0d85d1a41118c29c10a51489b93778bb5ca3c`). It takes about 15 seconds.
+and decodes back, fixes the checksum, and only continues if the content is byte-identical to the expected v2 build
+(SHA-256 `4414a997…a08` before labelling). It then labels the file **3.83** and writes it
+(SHA-256 `0df1cefec2a9188c82bf09e50736ea03e0ce9b4914561795808dd9bd1fac1cad`). It takes about 15 seconds.
+v2 differs from the camera-tested v1 (`fb0dc86b…`) by one parameter byte (and that byte's copy in the code image).
+
+**Why 3.83:** the camera only accepts an update whose version is newer than the installed one. With a file labelled
+3.82 a camera already on 3.82 says the latest firmware is installed. The label is two header fields (0x204 major,
+0x208 minor) outside the checksums; changing it does not change the firmware itself. `--version 3.84` etc. picks
+another label if the camera ever reports 3.83 as installed.
 
 ## Install (same procedure as an official update)
 1. Fully charged battery. Format a card **in the camera**.
@@ -41,12 +48,17 @@ and decodes back, fixes the checksum, and only writes the output if it is byte-i
 3. Hold **DISP/BACK** and switch the camera **ON**, still holding the button. The firmware update screen appears.
 4. Confirm and **do not interrupt** (no power-off, no card or battery removal) until it finishes.
 
-**Rollback:** do the same with the official `FPUPDATE.DAT`.
+**Rollback:** the official 3.82 file is refused by a camera that is on 3.82 (or reports 3.83 after this patch). Make a
+relabelled copy of the unmodified official firmware and install that:
+```
+python3 xpro1_cc_patch.py --stock FPUPDATE.DAT rollback/FPUPDATE.DAT --version 3.84
+```
+Only the version label differs from Fujifilm's file. Pick a label newer than whatever the camera shows on the update screen.
 
 ## Risks
 * **Bricking.** If the camera couldn't decode the modified firmware, it wouldn't start, and the SD-card updater lives
-  inside that firmware. On the test camera it decoded fine, and the output is byte-identical to that build, but this
-  is one camera.
+  inside that firmware. On the test camera v1 decoded fine. v2 is re-compressed by the same encoder and differs from v1
+  by a single parameter byte, but it has not been flashed yet, and this is one camera.
 * **Power loss during the update** bricks any camera, modified or not.
 * **Colour accuracy.** The tone curve is Fujifilm's exact Classic Chrome curve. The colour matrices are adapted from
   the X-E2 to the X-Pro1, not tuned by Fujifilm for this sensor. Blues are too strong (see Status).
@@ -61,9 +73,9 @@ and decodes back, fixes the checksum, and only writes the output if it is byte-i
 | Tone curve | Fujifilm's X-E2 Classic Chrome curve (#38) is placed in an unused slot of the X-Pro1's curve table. All 40 tone-curve references of PRO Neg. Hi point to it. |
 | 3×3 colour matrix (PRO Neg. Hi) | Classic Chrome's change from PROVIA on the X-E2, applied to the X-Pro1's PROVIA matrix |
 | 2×2 chroma matrix (PRO Neg. Hi) | same method; much lower chroma gain, which gives the muted look |
-| Two small settings | detail preset and highlight/shadow family set to PROVIA's values, as the X-E2 does for Classic Chrome |
+| Three small settings | detail preset, highlight/shadow family and chroma-gain preset set to PROVIA's values, as the X-E2 does for Classic Chrome (the chroma-gain preset is new in v2) |
 
-No executable code is changed. 75 bytes of image-processing parameters and one 72-byte curve entry differ; the
+No executable code is changed. 76 bytes of image-processing parameters and one 72-byte curve entry differ; the
 code image containing them is re-compressed, and the update file's checksum is recomputed.
 
 ## How it works (technical notes)

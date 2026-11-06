@@ -419,6 +419,23 @@
     "new": "1b0000000202030405050506060000008600530153025103650476059c07cf09f20b761047148517031eef22b1266f2afb2c352f77311033963485378a39733b1b3dc23eff3f0000",
     "note": "blob1 is LZ-compressed in FPUPDATE.DAT: patch decompressed blob1, re-encode (fits: 0x13bbe0 <= 0x140000)"
    }
+  },
+  {
+   "item": "chroma gain preset (FUN_00f2c8fc) NegHi -> PROVIA value (added v2)",
+   "confidence": "high",
+   "param_id": "0xe4ec",
+   "adjust_area": {
+    "not_space_file_offset": "0xaee748",
+    "old": "02",
+    "new": "01",
+    "raw_file_old": "fd",
+    "raw_file_new": "fe"
+   },
+   "blob1_mirror": {
+    "blob1_addr": "0x82095c",
+    "old": "02",
+    "new": "01"
+   }
   }
  ]
 }

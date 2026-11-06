@@ -33,7 +33,11 @@ check(all(b == 0 for b in C[P0 + src:PEND]), 'partition tail filler matches stoc
 check(c2 == s2, 'blob2 unchanged')
 
 # 3. byte-level change map
-diff_img = [i for i in range(len(S)) if S[i] != C[i] and not (P0 <= i < PEND) and i not in range(0x20c, 0x210)]
+# header version label (0x204 major, 0x208 minor BCD; plain, outside both checksums). The updater refuses a file
+# that is not newer than the installed version, so builds are labelled e.g. 3.83.
+maj, mnr = struct.unpack('<II', cand_raw[0x204:0x20c])
+check((maj, mnr) > (3, 0x82), f'header version label {maj}.{mnr:02x} is newer than 3.82 (installable on a 3.82 camera)')
+diff_img = [i for i in range(len(S)) if S[i] != C[i] and not (P0 <= i < PEND) and i not in range(0x204, 0x210)]
 diff_b1 = [i for i in range(len(s1)) if s1[i] != c1[i]]
 print(f'INFO tuning-area bytes changed: {len(diff_img)}; blob1 bytes changed: {len(diff_b1)}')
 check(all(DB <= i < DB + 0x10000 for i in diff_img), 'outside blob1, only the tuning area changed')
@@ -56,6 +60,19 @@ print('INFO PRO Neg Hi 2x2 now', m2(pre2))
 for name, a in (('PROVIA', 0), ('Velvia', 1), ('ASTIA', 2), ('Neg Std', 3)):
     check(m3(by(U2(0xf34108 + 2 * a))) == m3(by(U2(0xf34108 + 2 * a))) and S[DB + U2(0xf34108 + 2 * a)] == by(U2(0xf34108 + 2 * a)), f'{name} 3x3 preset untouched')
 check(by(0xffc6) == 1 and by(0xe13b) == 1, 'detail preset and H/S family = PROVIA values')
+# chroma gain preset (FUN_00f2c8fc, ID table 0xf2df08 indexed PROVIA..sepia): X-E2 CC uses PROVIA's preset (x1.00)
+check(by(U2(0xf2df08 + 8)) == by(U2(0xf2df08)) == 1, 'chroma gain preset: PRO Neg Hi = PROVIA (1)')
+# Audit (2026-11-06): every other colour-mode-dependent lookup in the X-Pro1 pipeline must already give
+# PRO Neg Hi the same value as PROVIA (X-E2 CC = PROVIA or = Neg Hi there, so nothing to port).
+U4 = lambda a: struct.unpack('<I', c2[a - B2:a - B2 + 4])[0]
+same = [(U2(0xf2b12c + (r * 0x29) * 2), U2(0xf2b12c + (r * 0x29 + 4) * 2)) for r in range(3)]       # FUN_00f29b4c
+same += [(U2(t), U2(t + 8)) for t in (0xf2b2c8, 0xf2b31e)]                                           # FUN_00f2979c
+same += [(0xe58d, 0xe591), (0xe5b6, 0xe5ba)]                                                          # FUN_00f2c384
+same += [(U2(0xf2fc0c + 2 * k), U2(0xf2fc2c + 2 * k)) for k in range(4)]                              # FUN_00f2e8c8
+same += [(U2(0xf34444 + 2 * k), U2(0xf3446c + 2 * k)) for k in range(5)]                              # FUN_00f31d70
+check(all(by(p) == by(n) for p, n in same), f'other film-sim lookups: PRO Neg Hi == PROVIA ({len(same)} pairs)')
+# second chroma-matrix path (FUN_00f30b10, u32 ID tables): Neg Hi must select the patched preset 5 like the main path
+check(all(by(U4(0xf31ae0 + (r * 0x29 + 4) * 4)) == 5 for r in range(4)), 'FUN_00f30b10 path: PRO Neg Hi 2x2 preset = 5 (patched)')
 # tone: every Neg Hi tone ID -> 38 (except the shared all-film-sims-16 mode), curve 38 = X-E2 curve 38
 tone_tabs = {'321f0': [(0xf34098, 4), (0xf3427c, 4), (0xf33db0, 4), (0xf3407c, 4), (0xf33db0, 11), (0xf3407c, 11)],
              '3232c': [(0xf3448c, u * 3 + i) for u in range(6) for i in range(3)] + [(0xf34298, u * 3 + i) for u in range(6) for i in range(3)]}
