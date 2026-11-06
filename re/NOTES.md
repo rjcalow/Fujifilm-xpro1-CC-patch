@@ -11,7 +11,11 @@ All offsets are file offsets in the NOT-ed image unless marked RAM. Flash offset
 | Load/partition tables, all module bases | ✅ both models |
 | Film-sim enums, and how Classic Chrome is numbered | ✅ from X-Pro2 debug strings + code |
 | LZ repack rule | ✅ stock streams never straddle a 16 KB input chunk (counted from the blob header); tools/lzenc_chunked.py obeys it |
-| PRO Neg Hi → Classic Chrome candidate | ✅ built + statically verified, untested on hardware: re/build/ccswap_candidate/ |
+| PRO Neg Hi → Classic Chrome | ✅ v2 flashed and working (2026-11-06): re/build/ccswap_v2/ (label 3.83); v1 = ccswap_candidate |
+| Colour-mode parameter audit | ✅ every film-sim lookup checked on both cameras; v2 = complete port of X-E2 CC settings |
+| Updater version check | ✅ mapped: header 0x204/0x208 must be newer than built-in 3.82 → label builds 3.83 |
+| SD dual boot | 🟡 files built + verified (re/build/sdboot_v2/, tools/build_sdboot.py); trigger candidate shutter + UP; untested (needs FAT32 card) |
+| Colour accuracy vs real CC | 🟡 pending ratio test (same RAW, PROVIA vs CC, X-Pro1 vs X-T20) |
 | Where the per-film-sim color/tone data lives | ✅ found: Classic Chrome fully extracted from the X-E2 and mapped onto the X-Pro1. See **classic_chrome/CLASSIC_CHROME.md** |
 | Outer checksum (X-Pro1 0x20c, 0x24c) | ✅ solved on 3 files: 0x20c = ~Σ(bit-inverted payload [0x25c,0x25c+L)), trailers = ~Σ(raw); see tools/fpupdate.py |
 
@@ -30,6 +34,8 @@ python3 tools/disasm.py out1/blob2.bin 0xe0ec80 out1/blob2.asm   # needs: pip in
 | findbase.py | guess the load base from string-pointer tables |
 | common.py | find long byte runs shared between the two firmwares (excludes code) |
 | curves.py | find monotonic u16 arrays (tone-curve candidates; needs numpy) |
+| verify_ccswap.py | full static check of a candidate (checksums, LZ, changed bytes, decoded tuning, audit pairs, version label) |
+| build_sdboot.py | SD dual-boot files (ffsys/ffboot/ffuser) from an FPUPDATE.DAT + fujimod EXR loader; EXIF marker "Ver3.89" |
 
 ## Container format (same on both models)
 - 0x000–0x23f plain: u32 4, then ASCII-hex model/component IDs (X-Pro1 `0001024x`, X-Pro2 `0005094x`), then at 0x204
@@ -280,3 +286,108 @@ Key facts it confirms or adds for the X-Pro1 (`xpro1-382` = firmware 3.82, inter
   (SHA-256 709e26f6…), self-checks, and only writes output identical to the camera-tested build (fb0dc86b…).
   Verified: reproduces `re/build/ccswap_candidate/FPUPDATE.DAT` byte-for-byte in ~14 s; rejects other inputs.
 * If the blue tuning (TODO) produces a v2, update PARAMS and RESULT_SHA256 in the script and the README status.
+
+## Session 2026-11-06: updater version check ("LATEST FIRMWARE")
+* Header parse `FUN_00f7e05c` → `FUN_010af358` stores into the update state struct (body: RAM 0x9c9828):
+  +0x210/+0x214 = file version from header 0x204 (major) / 0x208 (minor, BCD); +0x218/+0x21c = installed version.
+* Installed version = blob1 `0x857af0`: if tuning DB[0x206] == 0xff → DB[0x204].DB[0x205], else hard-coded 3, 0x82.
+  Our files (stock, v1, v2) have DB[0x204..0x206] = 00 00 00 → 3.82. (If the camera keeps its own copy of that
+  calibration-range area, a camera-specific value could apply instead: unverified.)
+* Decision `FUN_00ee53f0` (body branch): parse error 3/5 or bad BCD (`FUN_00ee4e94`) → msg 0x57; type error 10 or model
+  list mismatch (`FUN_00ee4bf4`) → 0x59; no file → 0x56; **not newer (`FUN_00ee5010`: major >, or = and minor >) → 0x58**.
+* ⇒ a 3.82-labelled file is refused on a 3.82 camera; relabelling the header (outside both checksums) to 3.83 should pass.
+  First 3.83 attempt reported refused by the user: card contents / on-screen versions not yet confirmed.
+
+## Session 2026-11-06: v2 flashed (user) and checked
+* v2 (header 3.83) installed after the card was found to still hold v1. EXIF afterwards: "X-Pro1 Ver3.82" ⇒ the camera
+  reports its built-in version, not the file label (as predicted from blob1 0x857af0). Future builds: keep labelling 3.83.
+* Same RAW, v1 in-camera JPEG (DSCF2723) vs v2 in-camera RAW conversion (DSCF2743), pixel-aligned (mean |ΔL*| 0.1):
+  chroma ×0.956 median (p10 0.90, p90 1.00), no hue or tone change; cap C* 47.8 → 46.0. ⇒ the chroma-gain fix is active
+  (this shot used gain column 134/128 = ×1.047) and in-camera RAW conversion uses the same tuning.
+* Remaining red strength comes from the ported 3×3/2×2, not from a leftover parameter. Next: measure CC/PROVIA ratios
+  per hue on the same RAW (X-Pro1 v2) vs genuine Fuji (X-T20 in-camera RAW conversion, PROVIA vs Classic Chrome).
+
+## Session 2026-11-06: SD dual boot, state of play
+* fujimod (HEAD 7a1bb27, 2026-11-06) now has a full **xpro1-382** SD recipe (and xe1-271), for our exact stock file:
+  `ffsys.bin` = 512-byte param block (file 0x25c) with word +0x10: 0x300 → 0x301 ("hold power through SD load");
+  `ffboot.bin` = their compiled EXR SD loader (1612 bytes, copies itself to SRAM 0xfff00800, loads the OS image with the
+  ROM's u16 read ABI: open 0x80001a74, read 0x80001b38, fs 0xfff00000, checks length + CRC32); `ffuser.bin`/`ffimage.bin`
+  = RAM image 0x16a0000 bytes: loader @0, section table @0x770000, stubs, UI DB, fonts, blob1/blob2 *decompressed* at
+  0x774000/0xe0ec80, modules @0x1420000, BSS zeroed; loader edits 0x46d0/0x46dc/0x46f8/0x486c → `mov r0,#0` and
+  section-table +8 := 1 (use preloaded sections). Their tool refuses to build only because of
+  "version-independent stock updater acceptance" (their recovery-card policy). That is the version check mapped above.
+* fujimod README: on SD boot, reads of update-installed internal storage come from the OS image ("firmware namespace
+  appended"), so tuning-area edits should take effect in dual boot; per-camera settings/calibration stay in flash.
+* **Trigger:** fujimod knows no SD-boot buttons for any EXR/EXR Pro body. X-Pro1 service manual p.3-12 ("X-PRO1 BOOT
+  Mode Setup Screen"): DC coupler CP-W126 + USB cable, "switch camera power ON while pressing the shutter button and up
+  key", LED lights green. That is the ROM boot mode, the strongest candidate for SD boot (cf. X-S1 = shutter + Fn1).
+* fujimod repo declares no licence: don't vendor its loader binary into this repo; local use only, or write our own.
+
+## Session 2026-11-06: search for boot-ROM service-mode references in the update file
+Disassembled all code (loader @0 from file 0x4025c, stubs @0x40000/@0xd0000, blob1, blob2; capstone, linear).
+* **No reference to the boot ROM or its workspace anywhere.** No movw/movt, mvn-built or pc-literal address into ROM
+  0x80000000–0x80003fff that is used as code/data (all hits are bit masks, PTP/USB codes, or values in register-init
+  tables of {value, 0xf000xxxx register} pairs); no access to ROM SRAM workspace 0xfff00000–0xfff007ff. No strings
+  ffsys/ffboot/ffuser/SD_BOOT/boot mode. ⇒ The SD/USB boot decision and its button combination live only in the 16 KiB
+  mask ROM (not in FPUPDATE.DAT; fujimod sha256 7dc7e332…, shared with X10).
+* Loader reset path (0x4000): CPU-mode setup, BSS clear, core check (0x42bc reads a p14 ID register, compares 0x4003),
+  MPU regions (0x41e8), main loader 0x47a4: GPIO 0xfff89214 bit2 test (power latch?), flash validity 0x4cbc, section loads
+  (the calls fujimod NOPs). Nothing asks how the ROM booted.
+* blob2 `FUN_010ae1bc` copies 0x100 bytes of code to SRAM 0xfff00800–0xfff00900 and jumps there: a standby/self-refresh
+  routine (DRAM controller 0xfff88xxx, GPIO 0xfff89xxx wake bits; `FUN_010ae124` = ~1 s held-input poll). Not boot mode,
+  but shows 0xfff00800+ is free SRAM at runtime (same area fujimod's SD loader uses).
+* blob1 state-machine debug names include **C_JIG / S_JIG** (factory adjustment "jig" mode, the USB mode used by the
+  X-Pro1_W adjustment software; table 0x77acb4, 153 names). The service manual's "BOOT mode" (shutter + up, USB, green LED,
+  [F8] Firmware Download) could be the ROM USB-boot or this firmware JIG mode; the camera test distinguishes them
+  (ROM mode: no firmware UI at all; JIG: firmware starts).
+
+## Session 2026-11-06: SD dual-boot files built (`re/tools/build_sdboot.py`)
+* Camera test: battery cycle + shutter + UP at power-on → blank screen (boot-ROM mode candidate; LED/USB not yet checked).
+* Builder follows fujimod's xpro1-382 recipe; fujimod loader passed by path (sha256 6eeade09…, not vendored). Stock build:
+  all 9 regions + ffsys header match the recipe hashes. Loader stage (388 B) audited: SRAM 0xfff00800, ROM open/read
+  0x80001a74/0x80001b38, FS 0xfff00000, size + CRC32 checks, jump 0, halt on error; no flash access.
+* `re/build/sdboot_v2/`: v2 content + marker (blob1 0x857a98 `mov r3,#'2'` → `#'9'`): photos taken while SD-booted carry
+  EXIF "Ver3.89". v2 image differs from stock image only in the 129 blob1 bytes. ffuser 0x16a0000 B, CRC32 0x67d40a2c.
+* Tuning DB (RAM 0x40d3b580) is not in the section table and has no direct code reference: filled at run time via the
+  flash block reader (fujimod has no EXR Pro flash-read redirect), so in SD boot it most likely comes from flash.
+* Card must be FAT (FAT32 / ≤32 GB SDHC); the user's 64 GB card is exFAT.
+
+## Firmware versions, downgrades and rollback (X-Pro1 SD updater) — reference
+How the stock updater (DISP/BACK + power ON, `FPUPDATE.DAT` on the card) decides, from blob2/blob1 code (3.82):
+
+**The rule: a file is only accepted if it is strictly newer than the installed version.**
+* File version = header 0x204 (major, u32) and 0x208 (minor, u32, BCD: 0x82 = .82). Parsed by `FUN_00f7e05c`, stored by
+  `FUN_010af358` into the update state (body: RAM 0x9c9828 +0x210/+0x214). These header bytes are plain and outside both
+  checksums (payload sum @0x20c covers 0x25c.., trailer sum covers the trailer), so the label can be changed freely.
+* Installed version = blob1 `0x857af0`: if tuning DB[0x206] == 0xff → DB[0x204].DB[0x205], else the built-in constant
+  3, 0x82. All our files (stock, v1, v2) have DB[0x204..0x206] = 00 00 00 → built-in 3.82. Stored at +0x218/+0x21c.
+* Compare `FUN_00ee5010`: accept if file major > installed major, or majors equal and file minor > installed minor.
+  Equal or older → message 0x58, shown as **"LATEST FIRMWARE"**. Same check, separate state, for lens (+0x230 block)
+  and a third device type (`_DAT_009cf730` = 0 body / 1 lens / 2 other).
+* Before that: BCD sanity `FUN_00ee4e94` (both bytes < 0x9a, low nibble < 10; 0xffffffff/0xffffffff = "no version",
+  accepted) → else msg 0x57; parse error 3/5 → 0x57; wrong file type (10) or model list mismatch (`FUN_00ee4bf4`, header
+  ASCII-hex model IDs 0001024x) → 0x59; no file parsed → 0x56.
+* The version string ("Ver3.82" in EXIF and the version screen) is built by blob1 0x8579e8 from the same source
+  (DB override or built-in "3.82"). It is not taken from the update file.
+
+**Consequences**
+* **No downgrade and no re-install with official files.** A camera on 3.82 refuses the official 3.82 file ("LATEST
+  FIRMWARE") and any older official file. There is no official way back to an earlier firmware.
+* **The installed version does not ratchet.** Flashing a file labelled 3.83 still leaves the camera reporting 3.82
+  (confirmed: EXIF "Ver3.82" after v2), because the version comes from the firmware's built-in constant, not from the
+  header of the last file. So any file labelled 3.83 or higher installs again and again on a 3.82-based camera.
+  (A firmware whose built-in constant is higher, e.g. a future patched build that changes 0x857b30/0x857b38, would raise
+  the bar for the next file. Don't change the built-in constant.)
+* **Rollback to stock = official 3.82 content with a higher label.** `public/xpro1_cc_patch.py --stock FPUPDATE.DAT
+  out/FPUPDATE.DAT --version 3.84` writes Fujifilm's file with only header 0x208 changed (`build/rollback_stock_384/`,
+  sha256 bcb280fe…874; differs from the official file in that one byte). Untested on camera so far.
+* **Older official firmware** (e.g. 3.80) would also need a label above the installed version to go in; its own
+  built-in constant would then become the installed version. Not needed or tested.
+* **Per-camera override:** if a camera's tuning area ever had DB[0x206] = 0xff (e.g. set by service), its version would
+  come from DB[0x204..0x205] instead. Not the case in any update file; a camera with such a value would need a label
+  above that number. The update screen shows both versions before anything is written, so check there.
+* **Practical:** the "latest firmware" refusal happens before the confirmation screen, so it is always harmless.
+  Most "still refused" reports are the wrong file on the card: check header bytes with
+  `xxd -s 0x204 -l 8 FPUPDATE.DAT` (3.83 = `0300 0000 8300 0000`) or the SHA-256.
+* **fujimod:** this is the "version-independent stock updater acceptance" their X-Pro1/X-E1 recovery recipe lists as
+  missing; the header label is the answer for the X-Pro1 (worth sharing).

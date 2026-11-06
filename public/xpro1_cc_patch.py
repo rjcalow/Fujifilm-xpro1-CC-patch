@@ -5,7 +5,14 @@ xpro1_cc_patch.py: add Classic Chrome to the Fujifilm X-Pro1 (firmware 3.82) by 
 Reads YOUR copy of the official X-Pro1 3.82 FPUPDATE.DAT and writes a patched FPUPDATE.DAT.
 No Fujifilm firmware is distributed with this script; it only contains the small set of changed values.
 
-    python3 xpro1_cc_patch.py FPUPDATE.DAT patched/FPUPDATE.DAT
+    python3 xpro1_cc_patch.py FPUPDATE.DAT patched/FPUPDATE.DAT                  # Classic Chrome, labelled 3.83
+    python3 xpro1_cc_patch.py FPUPDATE.DAT patched/FPUPDATE.DAT --version 3.84   # pick another label
+    python3 xpro1_cc_patch.py --stock FPUPDATE.DAT rollback/FPUPDATE.DAT --version 3.84   # unmodified official
+                                                                                  # firmware, relabelled (rollback)
+
+The camera refuses an update whose version is not newer than the one installed ("latest firmware installed"),
+so a file labelled 3.82 does not install on a camera that already runs 3.82. The label is the version field in the
+file header (not covered by the checksums); --version only changes that label, never the firmware content.
 
 Selecting PRO Neg. Hi on the camera then gives Classic Chrome. Menu, icon and EXIF still say "PRO Neg. Hi".
 USE AT YOUR OWN RISK: flashing modified firmware can brick the camera. See README.md.
@@ -14,7 +21,8 @@ Python 3.8+, standard library only.
 import hashlib, struct, sys
 
 STOCK_SHA256  = '709e26f6dd77e922660010628fb20937b269be871b188b8810eb2cb4d5d33236'  # X-Pro1 3.82 official
-RESULT_SHA256 = 'fb0dc86b2f9e4fd49e8aa0714ee0d85d1a41118c29c10a51489b93778bb5ca3c'  # expected output (v1)
+RESULT_SHA256 = '4414a997f2140ecc6aff4ee1bf56f88a92a1b0dc56f48c0427301bab3d687a08'  # expected v2 output, before relabelling (header still 3.82)
+# v1 (first camera-tested build, missing the chroma-gain fix): fb0dc86b2f9e4fd49e8aa0714ee0d85d1a41118c29c10a51489b93778bb5ca3c
 
 # File layout (offsets in the file; the payload at 0x25c.. is stored bit-inverted)
 PAYLOAD      = 0x25c          # flash offset 0 (flash offset = file offset - 0x25c)
@@ -51,6 +59,7 @@ PARAMS = [
     (0xe3cf, 'd000', '1000'),  # 2x2 chroma (preset 5) m10
     (0xffc6, '03', '01'),  # detail preset NegHi -> PROVIA value (1)
     (0xe13b, '02', '01'),  # H/S tone family plane0 NegHi -> PROVIA value (1)
+    (0xe4ec, '02', '01'),  # chroma gain preset NegHi -> PROVIA value (1): x1.00 instead of up to x1.15 (v2)
     (0xde13, '16', '26'),  # NegHi tone curve number 22 -> 38
     (0xde14, '16', '26'),  # NegHi tone curve number 22 -> 38
     (0xde15, '16', '26'),  # NegHi tone curve number 22 -> 38
@@ -171,13 +180,39 @@ def check(raw):
     ok_t = tsum == (~sum(raw[t0:t0 + tlen])) & 0xffffffff
     return ok_p and ok_t and t0 + tlen == len(raw), length
 
+# ---------------------------------------------------------------- version label (header 0x204 major, 0x208 minor BCD)
+def parse_version(s):
+    try:
+        major, minor = s.split('.'); major, minor = int(major), int(minor)
+        assert len(s.split('.')[1]) == 2 and 3 <= major <= 9 and 0 <= minor <= 99
+    except Exception:
+        sys.exit(f'Bad --version {s!r}: use the form 3.83')
+    if (major, minor) <= (3, 82):
+        sys.exit('--version must be newer than 3.82, or a camera on 3.82 refuses the file.')
+    return major, (minor // 10) << 4 | minor % 10
+
+def relabel(out, version):
+    major, minor_bcd = version
+    if struct.unpack('<II', out[0x204:0x20c]) != (3, 0x82):
+        sys.exit('Unexpected version field in the header. Nothing written.')
+    out[0x204:0x20c] = struct.pack('<II', major, minor_bcd)
+
+def write(dst, out, version, what):
+    ok, _ = check(out)
+    if not ok: sys.exit('Self-check failed: checksums after relabelling. Nothing written.')
+    open(dst, 'wb').write(out)
+    print(f'wrote {dst} ({what}, labelled {version[0]}.{version[1]:02x})\nSHA-256 {hashlib.sha256(out).hexdigest()}')
+
 # ---------------------------------------------------------------- main
-def main(src, dst):
+def main(src, dst, version, stock_only=False):
     raw = open(src, 'rb').read()
     if hashlib.sha256(raw).hexdigest() != STOCK_SHA256:
         sys.exit('Input is not the official X-Pro1 3.82 FPUPDATE.DAT (SHA-256 mismatch). Nothing written.')
     ok, length = check(raw)
     if not ok: sys.exit('Container checksum check failed on the stock file. Nothing written.')
+    if stock_only:
+        out = bytearray(raw); relabel(out, version)
+        return write(dst, out, version, 'official firmware, unmodified, for rollback')
     img = bytearray(x ^ 0xff for x in raw)                       # decoded (bit-inverted back) view
 
     unpacked, packed = struct.unpack('<II', img[BLOB1_HDR:BLOB1_HDR + 8])
@@ -209,10 +244,17 @@ def main(src, dst):
     if not check(out)[0]: sys.exit('Self-check failed: checksums. Nothing written.')
     digest = hashlib.sha256(out).hexdigest()
     if digest != RESULT_SHA256:
-        sys.exit(f'Self-check failed: output SHA-256 {digest} is not the tested build. Nothing written.')
-    open(dst, 'wb').write(out)
-    print(f'wrote {dst}\nSHA-256 {digest} (matches the build tested on a camera)')
+        sys.exit(f'Self-check failed: output SHA-256 {digest} is not the expected build. Nothing written.')
+    print('content matches the expected v2 build')
+    relabel(out, version)
+    write(dst, out, version, 'Classic Chrome v2')
 
 if __name__ == '__main__':
-    if len(sys.argv) != 3: sys.exit(__doc__)
-    main(sys.argv[1], sys.argv[2])
+    args = sys.argv[1:]; stock = '--stock' in args; version = '3.83'
+    if stock: args.remove('--stock')
+    if '--version' in args:
+        k = args.index('--version')
+        if k + 1 >= len(args): sys.exit(__doc__)
+        version = args[k + 1]; del args[k:k + 2]
+    if len(args) != 2: sys.exit(__doc__)
+    main(args[0], args[1], parse_version(version), stock)

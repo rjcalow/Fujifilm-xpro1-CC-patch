@@ -126,6 +126,7 @@ See `xe2_colour_mode_tables.txt`. CC takes:
 | 3×3 matrix | `0x1468e80`, preset-1, stride 0x12 | **`0xf33b94`, preset-1, stride 0x12** (`FUN_00f32ef8`); preset IDs `0xf34108[i]` (sRGB) / `0xf34300[i]` (alt); `i`: PROVIA 0, Velvia 1, ASTIA 2, NegStd 3, NegHi 4, mono 5, sepia 6 (`FUN_00f32fcc`) |
 | 2×2 chroma matrix | `0x1466fa0`, preset-1, stride 8 | **`0xf2e0d0`, preset-1, stride 8** (`FUN_00f2d384`); preset IDs `0xf2dd80[i]` (`FUN_00f2d404`) |
 | detail preset | `0x14671fc` (`010ae77c`) | `FUN_00f2c044` → `0xf2e39c[idx]`, idx = `0xf2e096[cm]` (`00f2ccb8`) |
+| chroma gain preset | `0x1466f8c` (`010adc00`), gains `0x1467274[(p-1)*5 + col]`, col = +0x158 | **`FUN_00f2c8fc`**: preset = DB[`0xf2df08[i]`], gain = DB[`0xf2de74 + (p-1)*10 + col`], col from recctl+0x118 (0,3,6,7,8); called by `FUN_00f2db68` and `FUN_00f311cc` |
 
 X-Pro1 per-film-sim assignments:
 | | PROVIA | Velvia | ASTIA | Neg Std | **Neg Hi** |
@@ -134,6 +135,7 @@ X-Pro1 per-film-sim assignments:
 | 2×2 preset | 1 | 2 | 3 | 4 | **5** (ID 0xe49d) |
 | tone family → curve# | 0 → 0 | 1 → 16 | 2 → 17 | 3 → 26 | **4 → 27** (IDs 0xdf91, 0xdf98) |
 | detail preset | 1 | | | | **3** (ID 0xffc6) |
+| chroma gain preset | 1 (×1.00 all columns) | 2 | 2 | 2 | **2** (ID 0xe4ec; 128/134/141/147/147 = up to ×1.15) |
 | H/S family plane0 | 1 | | | | **2** (ID 0xe13b) |
 
 Curve check: X-Pro1 curves 16/17/26/27 are byte-identical to X-E2 curves 6/11/16/21. Those are what the X-E2 uses for
@@ -164,6 +166,9 @@ All 25 operations, with old and new bytes, are in `xpro1_proneghi_to_classic_chr
 4. **2×2 chroma** (preset 5): DB IDs 0xe3c9 (m00), 0xe3cb (m11), 0xe3cd (m01), 0xe3cf (m10) := ported matrix.
 5. **Detail preset** ID 0xffc6: 3 → 1 (PROVIA's, as on the X-E2).
 6. **H/S family** ID 0xe13b: 2 → 1 (PROVIA's).
+7. **Chroma gain preset** ID 0xe4ec: 2 → 1 (PROVIA's, ×1.00; as the X-E2 does for CC). *Added in v2 (2026-11-06)*: v1 missed it
+   because `FUN_00f2c8fc` receives the colour mode as an argument, so the direct `+0xc4` table scan didn't find it.
+   v1 Classic Chrome therefore had up to 15% too much chroma (noticed on strong reds).
 Each DB write goes to **both** copies: file offset `0xae025c+ID` and blob1 mirror `0x812470+ID`.
 
 **Ported values** (relative transfer: `X-Pro1_CC = (X-E2_CC · X-E2_PROVIA⁻¹) · X-Pro1_PROVIA`, which keeps the X-Pro1's
@@ -205,6 +210,26 @@ Data (as in A, but in new preset slots instead of overwriting Neg Hi), plus code
 * **Recovery path:** the update file name (`A:\FPUPDATE.DAT`) appears only in blob2 (0xf50f25, 0xf7ec6f), not in the
   boot or loader stubs. The SD-card updater is therefore part of the main firmware. If a patched blob1/blob2 fails to
   boot, reflashing from SD is probably impossible (no independent recovery path found).
+
+### Full audit of colour-mode-dependent parameters (2026-11-06, before v2)
+Every function in the X-Pro1 pipeline (blob2 0xf20000–0xf40000) that reads recctl+0xc4, plus every callee it passes
+the colour mode to, was listed and its ID tables resolved (PROVIA vs PRO Neg Hi). Same sweep on the X-E2 (+0x108).
+| X-Pro1 lookup | PROVIA vs Neg Hi | action |
+|---|---|---|
+| 3×3 (`00f32fcc`), 2×2 (`00f2d404`, and `00f30b10` u32 tables → same preset 5), tone (`00f321f0`/`00f3232c`) | differ | ported |
+| detail (`00f2c044`) main / alt | 3→1 / 3 (= X-E2 CC alt 3) | ported / correct as is |
+| H/S tone family (`00f32c08`) plane 0 / planes 1–2 | 2→1 / all 2 | ported / nothing to do |
+| **chroma gain (`00f2c8fc`)** | 1 vs **2** | **ported in v2** |
+| `00f29b4c` (0xf2b12c), `00f2979c` (0xf2b2c8/0xf2b31e), `00f2c384` (0xe58d../0xe5b6..), `00f2e8c8` (0xf2fc0c..), `00f31d70` (0xf34444.., the counterpart of X-E2 `0x1469028`), `00f37508` | equal | nothing to do |
+| mono/sepia-only branches (`00f2a60c`, `00f2a990`, `00f31e40`, `00f2c6f4`) | n/a | nothing to do |
+
+X-E2 side: all CC-dependent lookups are in `xe2_colour_mode_tables.txt` except `FUN_010ae1a8` (`DAT_01466dd8[cm]`: CC = PROVIA = Neg Hi = 0)
+and `func_0x009ec468` (mono/sepia test only). `verify_ccswap.py` now checks all of the above.
+
+### Installing and rolling back
+The updater only accepts files newer than the built-in 3.82, so patched builds are labelled 3.83 and rollback uses
+the official firmware relabelled (e.g. 3.84). Official files cannot downgrade or re-install. Details: `../NOTES.md` →
+"Firmware versions, downgrades and rollback".
 
 ## 6. Tools used (in `re/tools`)
 `extract.py` (unpack), `gscripts/MakeFuncs.java` + `gscripts/DumpC.java` (Ghidra headless decompile of each blob to C),
