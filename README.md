@@ -1,89 +1,121 @@
-# Classic Chrome for the Fujifilm X-Pro1
+# Fujifilm X-Pro1: Classic Chrome patch and firmware research
 
-A patch that adds **Classic Chrome** to the X-Pro1 (firmware **3.82**) by replacing the **PRO Neg. Hi** film
-simulation. The Classic Chrome data comes from Fujifilm's own X-E2 firmware, a sibling camera that received Classic
-Chrome in a firmware update.
+This repository holds two things:
 
-> **Warning: unofficial, experimental, at your own risk.** Flashing modified firmware can brick a camera, and there is
-> currently **no SD-card recovery for the X-Pro1**. This patch has been flashed on **one** camera so far. Read
-> "Risks" before using it.
+1. **A Classic Chrome patch** for the X-Pro1 (firmware 3.82). It replaces the **PRO Neg. Hi** film simulation with
+   Classic Chrome, using Fujifilm's own data from the X-E2. The script is in [`public/`](public/); full instructions
+   are in [`public/README.md`](public/README.md).
+2. **Reverse-engineering tools** in [`re/`](re/). They cover:
+   - **SD dual boot:** start a modified firmware from the SD card without writing the camera's flash.
+   - **USB debug firmware:** read and write camera memory from a PC.
+   - **Live editing:** change image-processing parameters and UI colours while the camera runs.
+
+> **Warning: unofficial, experimental, at your own risk.** Flashing modified firmware can brick a camera. Everything
+> here has been tested on **one** camera. No Fujifilm firmware is distributed. You need your own copy of the official
+> X-Pro1 3.82 `FPUPDATE.DAT` (SHA-256 `709e26f6dd77e922660010628fb20937b269be871b188b8810eb2cb4d5d33236`).
 
 ## Status
 
-| | |
+| Part | State |
 |---|---|
-| Camera / firmware | X-Pro1, official firmware 3.82 only |
-| Tested | 1 camera: flashes, boots, shoots normally; the look is applied |
-| Selecting it | choose **PRO Neg. Hi**. The menu, icon and EXIF still say "PRO Neg. Hi" |
-| Other film simulations | unchanged (byte-identical) |
-| Known difference from real Classic Chrome | **blues/cyans are not muted enough** (a blue-grey fence stays teal); warm colours and greens are muted as expected |
-| Original PRO Neg. Hi | lost while the patch is installed; re-flash the official file to get it back |
+| Classic Chrome patch **v2** (labelled 3.83) | **Flashed and working** on the test camera. In-camera RAW conversion uses it. The camera still reports Ver3.82 |
+| SD dual boot | **Working** (2026-11-11). Firmware started from the card, photo EXIF "Ver3.89" (a marker only the SD-booted firmware writes). One successful boot so far |
+| Green-UI SD card | Built and emulator-checked, **not yet tried on the camera** |
+| USB debug firmware (label 3.85) | Flashed and working: memory peek / poke / call over USB (PTP) |
+| Live tuning over USB | Working: parameter changes take effect on the next shot or in-camera RAW conversion |
+| Live UI recolouring over USB | Working: swapping red and green in the UI graphics turns the menu accent green |
 
-Measured on the test camera against PROVIA (same scene, same camera): saturation of foliage, grass and brick is down
-about 18–21%, and blues are unchanged. An X-T20 shooting real Classic Chrome renders blues much greyer.
+## Classic Chrome patch (quick start)
 
-## What you need
-* Your own copy of the **official** X-Pro1 firmware 3.82 `FPUPDATE.DAT` from Fujifilm's support site
-  (SHA-256 `709e26f6dd77e922660010628fb20937b269be871b188b8810eb2cb4d5d33236`). No Fujifilm firmware is distributed here.
-* Python 3.8 or newer (standard library only).
-
-## Build the patched firmware
 ```
-python3 xpro1_cc_patch.py FPUPDATE.DAT patched/FPUPDATE.DAT
+python3 public/xpro1_cc_patch.py FPUPDATE.DAT patched/FPUPDATE.DAT
 ```
-The script refuses any input other than the official 3.82 file. It checks every value it replaces, re-compresses
-and decodes back, fixes the checksum, and only writes the output if it is byte-identical to the camera-tested build
-(SHA-256 `fb0dc86b2f9e4fd49e8aa0714ee0d85d1a41118c29c10a51489b93778bb5ca3c`). It takes about 15 seconds.
 
-## Install (same procedure as an official update)
-1. Fully charged battery. Format a card **in the camera**.
-2. Copy the patched `FPUPDATE.DAT` to the root of the card.
-3. Hold **DISP/BACK** and switch the camera **ON**, still holding the button. The firmware update screen appears.
-4. Confirm and **do not interrupt** (no power-off, no card or battery removal) until it finishes.
+1. Copy `patched/FPUPDATE.DAT` to a card formatted in the camera.
+2. Hold **DISP/BACK** while switching on, then confirm the update.
+3. Choose **PRO Neg. Hi** to get Classic Chrome. The menu, icon and EXIF still say "PRO Neg. Hi".
 
-**Rollback:** do the same with the official `FPUPDATE.DAT`.
+The script accepts only the official 3.82 file, checks every value it changes, and refuses to write anything that is
+not byte-identical to the expected build. The output is labelled **3.83**, because the camera only accepts updates
+newer than the installed version. To roll back, use `--stock` to make a relabelled copy of the official firmware.
+Risks, rollback and what exactly changes: [`public/README.md`](public/README.md).
 
-## Risks
-* **Bricking.** If the camera couldn't decode the modified firmware, it wouldn't start, and the SD-card updater lives
-  inside that firmware. On the test camera it decoded fine, and the output is byte-identical to that build, but this
-  is one camera.
-* **Power loss during the update** bricks any camera, modified or not.
-* **Colour accuracy.** The tone curve is Fujifilm's exact Classic Chrome curve. The colour matrices are adapted from
-  the X-E2 to the X-Pro1, not tuned by Fujifilm for this sensor. Blues are too strong (see Status).
-* Not tested: the second colour-space setting (probably Adobe RGB, whose matrix is an approximation), in-camera RAW
-  conversion, movies, or any firmware other than 3.82.
-* The firmware has no cryptographic signature check; the camera only verifies simple checksums. A wrongly built file
-  is therefore not stopped by cryptography. Use the script, which self-checks, and never hand-edit the output.
+## SD dual boot (experimental)
 
-## What it changes
-| Part | Change |
+The X-Pro1's boot ROM loads two files from a FAT32 card when **Fn + command-dial press** are held at power-on (after
+taking the battery out and back in):
+
+* `ffsys.bin`: the stock parameter block from the update file.
+* `ffboot.bin`, up to 64 KiB: our chain stub plus the stock boot loader, compressed.
+
+The stub runs in this order:
+1. It unpacks the stock loader to address 0 and drains an abort the ROM leaves pending.
+2. It starts the stock loader, which loads the firmware from flash as usual.
+3. A hook at the loader's final jump patches the firmware in RAM before it starts.
+
+The flash is never written. Switching on without the key combination boots the normal firmware.
+
+**The bug that blocked it until 2026-11-11:** the firmware decides at start-up why it was switched on, using a GPIO
+bit the loader records. That bit is only set for a moment after power-on. The SD path reaches the loader seconds
+later, so the firmware decided the start was invalid and switched the camera off. The hook now corrects the recorded
+value. Details: [`re/FAILURES.md`](re/FAILURES.md) (E25, F21).
+
+Building a card (Linux, needs the research environment below):
+
+```
+sh re/tools/setup_work.sh                     # venv + extracted firmware in re/work/ + compiled stubs
+PY=~/.venvs/xpro1-re/bin/python
+$PY re/tools/build_sdchain.py FPUPDATE.DAT re/work/chain/chain_crumbs.bin re/build/mycard --crumbs [--uiswap]
+$PY re/tools/emu_crumbs.py FPUPDATE.DAT re/build/mycard/ffboot.bin re/work      # emulator checks, must say ALL OK
+```
+
+Copy `ffboot.bin` and `ffsys.bin` to the root of a FAT32 card and verify their checksums. Then unmount the card;
+don't power off the reader. `--uiswap` swaps red and green in every UI colour at boot, which makes the menu
+accent green.
+
+## USB debug firmware and live editing
+
+`re/tools/build_ptpdebug.py` makes a v2 firmware with three extra vendor PTP operations: 0x9010 PEEK, 0x9011 POKE
+and 0x9012 CALL. It is labelled 3.85 and flashed like any update. With it installed and the camera on USB:
+
+| Tool | What it does |
 |---|---|
-| Tone curve | Fujifilm's X-E2 Classic Chrome curve (#38) is placed in an unused slot of the X-Pro1's curve table. All 40 tone-curve references of PRO Neg. Hi point to it. |
-| 3×3 colour matrix (PRO Neg. Hi) | Classic Chrome's change from PROVIA on the X-E2, applied to the X-Pro1's PROVIA matrix |
-| 2×2 chroma matrix (PRO Neg. Hi) | same method; much lower chroma gain, which gives the muted look |
-| Two small settings | detail preset and highlight/shadow family set to PROVIA's values, as the X-E2 does for Classic Chrome |
+| `ptpdebug.py` | `info`, `peek`, `poke`, `call`, `dumprom` (the 16 KiB boot ROM) |
+| `tune.py` | show / set / restore image-processing parameters by ID, colour matrices as numbers, load a 3D LUT's best fit |
+| `uicolor.py` | list / set / `swaprg` / restore the UI's vector-graphic colours |
+| `dramdump.py`, `dramtest.py` | dump all 256 MB of DRAM (47 s); test whether DRAM survives a restart |
+| `sdcrumbs.py` | read the SD-boot progress notes left in DRAM |
 
-No executable code is changed. 75 bytes of image-processing parameters and one 72-byte curve entry differ; the
-code image containing them is re-compressed, and the update file's checksum is recomputed.
+All edits are RAM-only. Switching off and on keeps them (the camera only goes to standby). Removing the battery
+restores everything.
 
-## How it works (technical notes)
-* **Container:** a plain header (model IDs, version, checksum), then the flash image stored bit-inverted (XOR 0xFF),
-  then a small plain trailer. This is a "type-4" header: payload checksum at 0x20c = `~Σ(bit-inverted payload bytes)`,
-  trailer checksum = `~Σ(raw trailer bytes)` (32-bit). There is no signature.
-* **Compression ("method 4"):** a 20-byte header (`unpacked, packed, ceil(packed/0x4000), 0x4000, 4`), then tokens
-  `0nnnnnnn` = n literals, `1ddddddd ddddllll` = copy l (1–15) from distance d (1–2047). Decoding is done by a hardware
-  engine. Fujifilm's encoder never lets a token cross a 16 KiB page boundary, and this patch keeps that rule.
-* **Film simulations:** the film-sim setting maps to an internal "colour mode" (PROVIA 0 … PRO Neg Hi 7; Classic Chrome
-  is 8 on the X-E2). The image pipeline indexes tables of *parameter IDs* by colour mode. Each ID is a byte offset into
-  an image-processing parameter area that is stored in the update file. Values are gains (0x40 = 1.0), 13-bit signed
-  matrix coefficients (0x400 = 1.0), or preset numbers. Tone curves are 28-knot 14-bit tables compiled into the code image.
-* The X-Pro1 and X-E2 use the same film-sim numbering (0–12). The X-E2 appends Classic Chrome as 13 / colour mode 8.
+## Research environment
 
-## Credits and related work
-* Reverse engineering and patch: this project. All values were derived from official Fujifilm firmware files.
-* [fujimod](https://github.com/justjake/fujimod) (FujiHack community): independent documentation of the same
-  update format, SD-card boot and recovery work for many Fujifilm cameras. Its advice applies: test modified firmware by
-  SD dual-booting first where your camera supports it. (The X-Pro1 is not supported there yet.)
+* Linux, Python 3.
+* `sh re/tools/setup_work.sh` creates the venv `~/.venvs/xpro1-re` (capstone, keystone-engine, unicorn, ziglang,
+  numpy) and extracts the firmware into `re/work/`.
+* For the USB tools: `~/.venvs/xpro1-re/bin/pip install pyusb`. If you get "Resource busy", the desktop's gphoto
+  service is holding the camera.
+* `re/work/`, `re/build/`, firmware files and photos are git-ignored. Nothing derived from Fujifilm's firmware is
+  committed.
 
-Fujifilm, X-Pro1, X-E2 and Classic Chrome are trademarks of FUJIFILM Corporation. This project is not affiliated with or
-endorsed by Fujifilm.
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| `public/` | The Classic Chrome patch script and its user README |
+| `re/NOTES.md` | Session notes: memory map, formats, every finding with addresses |
+| `re/FAILURES.md` | SD-boot failure log, established facts (E1–E27) and working rules. Read before any camera test |
+| `re/TODO.md` | Open tasks |
+| `re/classic_chrome/` | Classic Chrome port analysis |
+| `re/sdchain/` | SD chain stub (C + ARM assembly, built with `zig cc`) |
+| `re/tools/` | Builders, emulator tests (unicorn), USB tools |
+
+## Credits
+
+* [fujimod](https://github.com/justjake/fujimod) (FujiHack community): independent documentation of the update
+  format and SD boot for many Fujifilm cameras. Its boot-ROM facts helped here. The X-Pro1 SD chain stub and loader
+  hook in this repository are separate code.
+
+Fujifilm, X-Pro1, X-E2 and Classic Chrome are trademarks of FUJIFILM Corporation. This project is not affiliated with
+or endorsed by Fujifilm.

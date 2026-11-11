@@ -5,7 +5,8 @@ simulation. The Classic Chrome data comes from Fujifilm's own X-E2 firmware, a s
 Chrome in a firmware update.
 
 > **Warning: unofficial, experimental, at your own risk.** Flashing modified firmware can brick a camera, and there is
-> currently **no SD-card recovery for the X-Pro1**. This patch has been flashed on **one** camera so far. Read
+> currently **no SD-card recovery for the X-Pro1** (SD dual boot now works for testing, see the main README, but
+> it does not repair a camera that won't start). This patch has been flashed on **one** camera so far. Read
 > "Risks" before using it.
 
 ## Status
@@ -13,7 +14,7 @@ Chrome in a firmware update.
 | | |
 |---|---|
 | Camera / firmware | X-Pro1, official firmware 3.82 only |
-| Tested | v1: 1 camera, flashes, boots, shoots normally, the look is applied. **v2** (current, adds the chroma-gain fix) is statically verified, not yet flashed |
+| Tested | 1 camera. v1 and **v2** (current, adds the chroma-gain fix) both flash, boot and shoot normally with the look applied. In-camera RAW conversion uses the patched look. The camera still reports Ver3.82 |
 | Selecting it | choose **PRO Neg. Hi**. The menu, icon and EXIF still say "PRO Neg. Hi" |
 | Other film simulations | unchanged (byte-identical) |
 | Known difference from real Classic Chrome | v1: colours (strong reds especially) a little too saturated, because PRO Neg. Hi's extra chroma gain (up to ×1.15) was left in place. Fixed in v2. Blues/cyans were also not muted enough in v1; re-check on v2 |
@@ -57,8 +58,7 @@ Only the version label differs from Fujifilm's file. Pick a label newer than wha
 
 ## Risks
 * **Bricking.** If the camera couldn't decode the modified firmware, it wouldn't start, and the SD-card updater lives
-  inside that firmware. On the test camera v1 decoded fine. v2 is re-compressed by the same encoder and differs from v1
-  by a single parameter byte, but it has not been flashed yet, and this is one camera.
+  inside that firmware. On the test camera v1 and v2 both decoded and run fine, but this is one camera.
 * **Power loss during the update** bricks any camera, modified or not.
 * **Colour accuracy.** The tone curve is Fujifilm's exact Classic Chrome curve. The colour matrices are adapted from
   the X-E2 to the X-Pro1, not tuned by Fujifilm for this sensor. Blues are too strong (see Status).
@@ -95,7 +95,8 @@ code image containing them is re-compressed, and the update file's checksum is r
 * Reverse engineering and patch: this project. All values were derived from official Fujifilm firmware files.
 * [fujimod](https://github.com/justjake/fujimod) (FujiHack community): independent documentation of the same
   update format, SD-card boot and recovery work for many Fujifilm cameras. Its advice applies: test modified firmware by
-  SD dual-booting first where your camera supports it. (The X-Pro1 is not supported there yet.)
+  SD dual-booting first where your camera supports it. (fujimod does not support the X-Pro1 yet; this repository's
+  own experimental SD dual boot does, see the main README.)
 
 Fujifilm, X-Pro1, X-E2 and Classic Chrome are trademarks of FUJIFILM Corporation. This project is not affiliated with or
 endorsed by Fujifilm.
