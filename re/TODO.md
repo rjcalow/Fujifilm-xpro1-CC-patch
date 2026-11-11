@@ -1,18 +1,37 @@
 # TODO: X-Pro1 Classic Chrome (next sessions)
 
-Status (2026-11-06): **v2 flashed and working** (PRO Neg Hi slot = Classic Chrome, chroma-gain fix active; camera still
-reports Ver3.82). Full audit of colour-mode parameters done: v2 is a complete port of the X-E2's CC settings.
-**SD dual-boot files built and verified (`build/sdboot_v2/`), not yet tried: waiting for a FAT32 card.**
-Details for everything below: `NOTES.md` (sessions 2026-11-06) and `classic_chrome/CLASSIC_CHROME.md`.
+Status (2026-11-09): **v2 flashed and working** (PRO Neg Hi slot = Classic Chrome, chroma-gain fix active; camera
+still reports Ver3.82). **SD dual boot paused**: ROM + stub + stock loader work, section 0 stops before blob1 (no CPU
+exception); every remaining unknown is in the boot ROM. See `FAILURES.md` ("Where it stands", "Next step").
+Details: `NOTES.md` (sessions 2026-11-06 to 2026-11-09) and `classic_chrome/CLASSIC_CHROME.md`.
+Environment: `sh re/tools/setup_work.sh` (venv `~/.venvs/xpro1-re`, extracted firmware in `re/work/`).
 
 ## NOW
-- [ ] **SD dual-boot test** (no flash write). Needs a FAT32 card: a ≤32 GB SDHC card, or a spare 64 GB card formatted
-      FAT32 on the PC (`mkfs.vfat -F 32`; don't format it in the camera, which makes SDXC cards exFAT). Card root:
-      `ffsys.bin`, `ffboot.bin`, `ffuser.bin` from `build/sdboot_v2/`, no `FPUPDATE.DAT`. Battery out/in, hold
-      shutter + UP, power ON. Success = camera starts and photos show EXIF "Ver3.89" (marker). Blank screen = ROM did not
-      take the files (note LED colour); hang = battery pull. Check the card on the PC before inserting it.
-- [ ] Confirm the shutter + UP mode is the boot ROM (already seen: blank screen after battery cycle). Note LED colour; with
-      USB connected, `lsusb` should show a bare boot-ROM device, not a normal Fujifilm (04cb) device or the C_JIG mode.
+- [x] (2026-11-11) **SD dual boot works**: `build/sdchain_poweron/` (FAILURES E25). Fn + dial press at power-on → screen
+      comes up by itself, RAM marker Ver3.89 present.
+- [x] EXIF "Ver3.89" confirmed: `samples/DSCF2758.JPG` / `.RAF` (2026-11-11 12:39).
+- [x] (2026-11-11) Menu accent red → green found live (FAILURES E27: R/G swap of every UI colour record).
+- [ ] **Green-UI SD card** `build/sdchain_green/` (ffboot 276f1752…): power-on card + UI colour swap at stage B,
+      emulated (byte-exact vs the live-tested swap). Test: Fn + dial press boot → menu accent green, photo EXIF Ver3.89.
+- [ ] Narrow the swap to the menu accent only (bisect the records with `uicolor.py set --from/--skip/--limit`), and
+      try a darker menu background the same way.
+- [ ] Production SD card: quiet stub + loader_hook with the power-on snapshot fix (no traps/checkpoints) and the real
+      patch table (Classic Chrome variants) instead of the marker; then document the procedure in `public/`.
+- [x] (superseded, FAILURES F21) **SD-boot breadcrumb test** (`build/sdchain_crumbs/`, FAT32 card): Fn + dial press boot → wait 30 s → shutter
+      (normal boot, keep the battery in) → USB → `sdcrumbs.py read --save re/work/crumbs_1.bin`. Question: does DRAM
+      survive, and if so where does the SD-booted firmware stop and in what hardware state.
+- [x] (2026-11-10) Flashed, PEEK works, ROM dumped (sha256 = fujimod's). Was: flash `build/ptpdebug_385/FPUPDATE.DAT` (v2 + USB peek/poke/call, label 3.85;
+      header check `0300 0000 8500 0000`). Then `~/.venvs/xpro1-re/bin/python re/tools/ptpdebug.py info` and
+      `... dumprom rom.bin` (compare sha256 with fujimod's 7dc7e332…).
+- [x] (2026-11-11) Live tuning works (FAILURES E24); `re/tools/tune.py` built and tested on the camera.
+- [ ] **LUT test** (10 min): USB → `tune.py lut luts/ColorReps-classic-chrome.cube` → unplug → convert one RAW as
+      PROVIA, PRO Neg Hi, PRO Neg Std → compare (expected ΔE ~3 to the real LUT applied to the PROVIA JPEG).
+- [ ] **Colour-accuracy test, live**: X-T20 genuine Classic Chrome reference vs X-Pro1 conversions; adjust
+      cc3x3 / cc2x2 with `tune.py setmat`, convert the same RAW in camera, `compare_jpeg.py`. Flash only the final values.
+- [ ] Analyse the boot ROM: SD-boot path and what it leaves behind, mount + file API (FAILURES E20), the pending abort.
+- [ ] Optional, zero risk (user's call): ask fujimod's maintainer for the EXR ROM image or its mount address.
+- [x] Section 0 analysed (no hardware waits, exceptions = silent hang); exception-trap card → no exception (F18);
+      checkpoint card unreadable (F19); warm-resume idea ruled out statically (F20). No more LED tests.
 - [ ] Ratio test for colour accuracy (camera RAW conversion keeps everything else fixed):
       X-Pro1: DSCF2723 RAW → PROVIA, Color 0 (the PRO Neg Hi/CC version is DSCF2743).
       X-T20: a red subject (+ some green/blue) → in-camera RAW conversion as PROVIA and as Classic Chrome, Color 0, same WB.

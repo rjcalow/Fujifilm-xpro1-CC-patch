@@ -14,7 +14,8 @@ All offsets are file offsets in the NOT-ed image unless marked RAM. Flash offset
 | PRO Neg Hi → Classic Chrome | ✅ v2 flashed and working (2026-11-06): re/build/ccswap_v2/ (label 3.83); v1 = ccswap_candidate |
 | Colour-mode parameter audit | ✅ every film-sim lookup checked on both cameras; v2 = complete port of X-E2 CC settings |
 | Updater version check | ✅ mapped: header 0x204/0x208 must be newer than built-in 3.82 → label builds 3.83 |
-| SD dual boot | 🟡 files built + verified (re/build/sdboot_v2/, tools/build_sdboot.py); trigger candidate shutter + UP; untested (needs FAT32 card) |
+| SD dual boot | ⏸ ROM boot + chain to the stock loader work; section 0 stops before blob1 without an exception. Paused until the boot ROM can be read over USB (`build/ptpdebug_385/`). **Read `FAILURES.md` first** |
+| USB debug firmware | 🟡 built + emulated (PTP 0x9010 peek / 0x9011 poke / 0x9012 call), not flashed: waiting for a Mini-USB cable |
 | Colour accuracy vs real CC | 🟡 pending ratio test (same RAW, PROVIA vs CC, X-Pro1 vs X-T20) |
 | Where the per-film-sim color/tone data lives | ✅ found: Classic Chrome fully extracted from the X-E2 and mapped onto the X-Pro1. See **classic_chrome/CLASSIC_CHROME.md** |
 | Outer checksum (X-Pro1 0x20c, 0x24c) | ✅ solved on 3 files: 0x20c = ~Σ(bit-inverted payload [0x25c,0x25c+L)), trailers = ~Σ(raw); see tools/fpupdate.py |
@@ -391,3 +392,362 @@ How the stock updater (DISP/BACK + power ON, `FPUPDATE.DAT` on the card) decides
   `xxd -s 0x204 -l 8 FPUPDATE.DAT` (3.83 = `0300 0000 8300 0000`) or the SHA-256.
 * **fujimod:** this is the "version-independent stock updater acceptance" their X-Pro1/X-E1 recovery recipe lists as
   missing; the header label is the answer for the X-Pro1 (worth sharing).
+
+## Session 2026-11-07: SD boot not working yet → LED diagnostic
+* Attempts so far were not valid tests: the first card had 0-byte boot files (copy not flushed), then the files were
+  right but the card was exFAT. Valid card prepared: 29 GB FAT32, all three files verified (sha) and synced.
+* Result with shutter + UP on that card: blank screen, camera does not appear on USB (no new device in lsusb/dmesg).
+  So it's still open whether shutter + UP enters the ROM boot mode on battery, and whether the ROM loads the card.
+* fujimod (HEAD 3385650): EXR and EXR Pro share one 16 KiB boot ROM (sha256 7dc7e332…). The **X-S1 (EXR)** SD-boot
+  combination is **shutter + Fn1, no USB** ("usb": false). ⇒ For this ROM the trigger is "shutter + one button"; which
+  X-Pro1 button sits on the X-S1's Fn1 line is unknown. Candidates: shutter + Fn, shutter + UP (service manual), shutter +
+  other selector keys / AE / AF / DRIVE / Q.
+* None of the fujimod EXR / EXR Pro recipes has hardware confirmation; their tool refuses to build X-Pro1 cards.
+* **LED diagnostic** (`re/tools/build_sdboot_led.py` → `re/build/sdboot_led/`): ffboot.bin = fujimod's 372-byte
+  green-led stub (sha256 494964bb…, audited: cpsid; (addr, clear, value) register writes; dsb; wfe loop) configured with
+  the X-Pro1 status-LED writes derived as fujimod does from the stock data (blob1 0xd8498 descriptor pair, loader 0x44c0
+  port-15 GPIO record): port 15 pin 2 on (active low), pin 0 off; 10 writes to 0xfff893c0–0xfff893d8 only. Green LED at
+  power-on with a combination ⇒ the ROM ran code from the card. No ffuser.bin needed.
+
+## Session 2026-11-07: X-Pro1 key wiring from the firmware → SD-boot combination candidate
+LED diagnostic card (FAT32, verified) gave no LED with shutter + Fn, shutter + UP, shutter + other keys.
+**Key map (blob1, 3.82).** Key-name table 0x776d28.. records {key code, hardware id, name ptr} (12 B; ends {0,0,UNKNOW_KEY}).
+Key descriptors 0x85b8xx–0x85bec0, stride 0x1c, record R: R+0 id, R+4 flags, R+8 type, R+0xc channel or
+`port<<16|pin`, R+0x10 u16 min / R+0x12 u16 max (ADC window) or R+0x12 active level (GPIO), R+0x14 debounce.
+Scanner: blob1 0x85a1ec.. (GPIO: input reg 0xfff89014 + port*0x40; ADC: values array 0x9de7c8).
+| input | keys |
+|---|---|
+| ADC ch6 (ladder) | UP 0x2f1–0x354, DOWN 0x21b–0x291, LEFT 0x155–0x1c7, RIGHT 0x097–0x0fb |
+| ADC ch7 (ladder) | VIEW 0x000–0x064, QUICK 0x1e0–0x215, DISP/BACK 0x28b–0x2b9, MENU/OK 0x2de–0x307, AE-L 0x310–0x335 |
+| ADC ch3 / ch4 (16 / 13 steps) | shutter-speed dial / exposure-compensation dial (ids 0x31c–0x338) |
+| ADC ch1 (3 steps) | focus-mode selector MF / AF-S / AF-C |
+| type 0x500 (callbacks 0x8584e8/0x858544/0x8585a0) | DRIVE, AE, AF |
+| type 0x400 (0x001c0001, 0x001e0001) | S1 / S2 (shutter half / full) |
+| GPIO 0-0 | id 0x30 (unnamed) |
+| GPIO 2-10 | POWER switch |
+| GPIO 2-12 | PLAY |
+| GPIO 4-4 | viewfinder lever (EVF/OVF) |
+| GPIO 8-2 | card detect |
+| **GPIO 0-10** | **Fn** (`KEY_FMODE`, active low) |
+| **GPIO 0-11** | **command-dial press** (`KEY_CMDL_PUSH`, active low) |
+| GPIO 15-1 | id 0x2d (unnamed) |
+* fujimod measured SD-boot buttons on EXR II bodies are exactly GPIO 0-10 + 0-11: X-E2 command-dial press (0-10) + Fn7
+  (0-11); X-T1 AE-L (0-10) + Fn1 (0-11). ⇒ **X-Pro1 candidate: Fn + press the command dial** (no shutter). The X-S1
+  (EXR, same ROM as X-Pro1) is listed as shutter + Fn1; its wiring isn't in fujimod's catalog, so it may well be the
+  same two GPIO lines. The service-manual "shutter + up" is a different (USB/BOOT) mode or a different line.
+* The user's early "Fn + command wheel" try was on an invalid card (exFAT / 0-byte files), so it proves nothing.
+
+## ✅ 2026-11-07: X-Pro1 SD boot CONFIRMED on hardware
+* **Combination: Fn + command-dial press, held at power-on** (after a battery out/in), FAT32 card with ffsys.bin (stock
+  param block, +0x10 = 0x301) and ffboot.bin = LED stub → the green status LED lights. ⇒ the EXR Pro boot ROM loads and
+  runs ffboot.bin from the card. Predicted from the firmware key map (GPIO 0-10 Fn + 0-11 command-dial press, the same
+  two lines as the EXR II X-E2/X-T1 SD-boot pairs). Shutter + UP / shutter + Fn / exFAT cards: no boot.
+* LED stub config (port 15 pin 2 on, active low) confirmed to drive the green LED.
+* Next: full image (ffboot = fujimod EXR loader + ffuser.bin v2 with "Ver3.89" EXIF marker).
+
+## Session 2026-11-07: full image with fujimod's loader → blank; own loader with LED progress
+* Full sdboot_v2 card (fujimod loader) with Fn + command-dial press: blank screen, no indication (fujimod's loader
+  shows nothing; any error = silent wfi). Unknown which stage failed.
+* **Own loader `re/tools/sdloader.py`** (keystone; 604 B; ours, publishable): same ROM ABI as fujimod's (open
+  0x80001a74("ffuser.bin"), size at [[0xfff00000]]+0x20, read 0x80001b38(dst, u16 len, &u16 got), 32 KiB chunks to
+  0x40000000+, CRC32) plus green LED: ON at entry, TOGGLE every 512 KiB (≈45 toggles for 23.7 MB), OFF at hand-over
+  (jump 0). Errors = endless blink code: 1 open failed, 2 file record/size, 3 read failed/short, 4 CRC.
+* Emulator test (unicorn; `scratchpad/scripts/emu_sdloader.py`, ROM API faked): success path loads the real 23.7 MB
+  ffuser (724 reads, 45 toggles, CRC ok, jump to 0, DRAM == file) and each error path gives its code.
+  It caught a keystone bug: a conditional `bleq` to a forward label assembled as a branch to itself; avoid conditional
+  bl to forward labels (all 27 branch targets now checked).
+* `build_sdboot.py` now uses our loader by default (`--fujimod-loader PATH` for theirs). Card: ffboot.bin = ours
+  (sha 3d45e9fe…), ffsys/ffuser unchanged; ffboot_fujimod.bin / ffboot_led.bin kept on the card, unused.
+
+* Probe result (SRAM-placed loader, body 0xfff00800, sp 0xfff01ff8): LED on → off and stays off ⇒ **the ROM open()
+  call never returns** (an error return would blink code 1). fujimod's loader has the same layout, which explains its
+  silent blank screen. Hypothesis: the EXR ROM keeps file-system state in SRAM above 0xfff00448 (or on its own stack near
+  the top of SRAM, which [0xfff00000] may point into), and the loader's SRAM copy / stack corrupt it.
+* Next probe (`sdloader.build(..., probe=True, place='dram')`, card ffboot.bin sha dec0e746…): body at DRAM 0x41f00000,
+  stack 0x41f80000, no SRAM writes at all. Emulator-tested.
+
+* DRAM-placed probe (no SRAM writes): still on → off, stays off ⇒ ROM open() hangs regardless of SRAM. The ROM file
+  API (fujimod's untested EXR ABI: open 0x80001a74(name)) cannot be used as is; without the ROM image we can't fix it.
+  (Ideas: wrong address/arguments, card state torn down by the ROM before jumping to ffboot, IRQ vectors at 0 now
+  overwritten by ffboot itself.)
+
+## Session 2026-11-07: chain boot (no ROM file API)
+Only the ROM's own load of ffboot.bin (≤ 64 KiB, 16-bit length) is known to work. New approach: ffboot.bin carries the
+**stock boot loader** (file 0x4025c, 0x40000 B; raw-DEFLATE 30,479 B) plus a 3.5 KiB C stub (`re/sdchain/`: start.S,
+main.c with our own inflate, link.ld; cross-compiled with zig cc -target arm-freestanding-eabi -mcpu=cortex_r4).
+Stub: relocate to DRAM 0x41f00000, zero .bss at 0x41f60000, stack 0x41f80000, LED on, inflate loader to address 0
+(LED toggles per 32 KiB), CRC32 check (code 4) / inflate error (code 5) / bad config (code 6), LED off, jump 0.
+The stock loader then loads everything from flash exactly as a normal boot. `re/tools/build_sdchain.py` →
+`re/build/sdchain/` (ffboot.bin 33,988 B, sha 6d955511…). Emulator: loader at 0 byte-identical, jump taken, error
+codes correct. CPU note: loader uses MPU (c6) and TCM-region (c9) registers ⇒ Cortex-R4-class core.
+Next if it boots: hook the loader's final jump (0x405c `mov pc, r3`) to patch blob1 in RAM (CC bytes + "Ver3.89").
+
+* Chain boot on camera (slow-signal build 961bef77…): LED on → flicker (inflate) → steady glow ~1 min (CRC OK; the
+  6-phase busy wait took ~60 s ⇒ CPU ≈ 13 MIPS in the ROM's clock setup) → off (jump to the stock loader at 0).
+  Camera did not start (blank). So the stub + inflate + CRC work on hardware; the stock loader stalls or fails.
+* Loader map: reset 0x4000 → modes 0x4060, stacks 0x40c4 (stack top 0x4000), BSS 0x67e0–0x7280, core id 0x42bc,
+  core 0 → GPIO init 0x4f58, MPU 0x41e8, **main 0x47a4** (validity 0x4cbc, hw-ready wait 0x44dc on 0xfffa8000 bit 26,
+  section table 0x4668, sections 0x4760, …), then `mov pc, r3` at 0x405c (entry from [0x67e0], r0 = [0x67e4]).
+  Error handler 0x450c (resets all GPIO ports, halts). Boot-info words at DRAM 0x400a00f8/0x400a00fc.
+* Marker build (`build_sdchain.py --markers`, card ffboot 902a1677…): trampolines at loader 0x9000 (0xff filler):
+  main reached → green; loader done → green + orange (pin 0, presumed orange); error handler → orange blinking.
+
+* Marker run: flicker → green glow ~1 min → off, and it **stays off**: the loader never reached main (t_main marker).
+  Hypothesis: D-cache. The ROM likely runs with the D-cache on; our inflate writes the loader at 0 into the cache, the
+  CRC (data side) passes, but instruction fetch reads stale RAM. Fix: `caches_off()` in the stub (clean+invalidate
+  D-cache by set/way from CLIDR/CCSIDR, then clear SCTLR M/C/I, invalidate I-cache) before jumping; glow cut to one
+  phase. Emulated on unicorn's Cortex-R5 model: OK. Card ffboot 87019367… (markers included).
+
+* Cache-fix run (87019367…): flicker → off, stays off. Still no main marker. (That build turned the LED off before
+  caches_off, so a hang there was indistinguishable.)
+* **Trace build** (`build_sdchain.py --trace` → `re/tools/loader_trace.py`; card ffboot d5042070…): stub turns LED off
+  after CRC, cleans D-cache, disables MPU/caches, clears SCTLR.V (low vectors), jumps 0. In the loader copy:
+  green blinks k = 1..8 before each start-up call (1 modes 0x4060, 2 stacks 0x40c4, 3 core-id after BSS clear, 4 GPIO/
+  clock init 0x4f58, 5 core-id, 6 MPU/cache 0x41e8, 7 core-id, 8 main 0x47a4); orange blinks k = 1..7 before main's
+  steps (1 validity 0x4cbc, 2 init 0x4c64, 3 hw-ready wait 0x44dc, 4 section table 0x4668, 5 sections 0x4760, 6 0x468c,
+  7 0x4ca8); undef/prefetch/data-abort vectors → green/orange alternating; error handler 0x450c → orange blinking;
+  final jump → green + orange. Trampolines at 0x9000–0x9360, register save at 0x9f00 (no stack).
+  `re/tools/emu_trace.py`: order verified in unicorn (Cortex-R5 model; p14 core id reads 0 there, so cp4 is skipped).
+* Tools now in the repo (scratchpad gets wiped): emu_sdchain.py, emu_trace.py, loader_trace.py, build_sdchain.py,
+  re/sdchain/*. Toolchain: venv with capstone, keystone-engine, unicorn, ziglang (zig cc as ARM cross-compiler).
+
+* Trace run (d5042070…): **green/orange alternating forever = exception taken** (undef/prefetch/data abort vectors →
+  t_crash). Earlier builds kept SCTLR.V=1, so the same exception went to the ROM's high vectors (silent). User did not
+  report checkpoint counts before it.
+* Suspect: IRQs. The stub ran with the ROM's CPSR (IRQs probably enabled: ROM SD driver); after switching to the
+  loader's low vectors any pending IRQ enters the loader's IRQ handler (0xc8) before the loader is set up; the 0.5 s
+  checkpoint blinks before 0x4060 (which masks I/F) widen that window. Cold NAND boot hands over with IRQs masked.
+* Next build (card a50c7e8e…): stub `cpsid if` before caches_off/hand-over. Crash reporter instead of plain
+  alternation: repeating ORANGE × type (1 undef, 2 prefetch abort, 3 data abort), GREEN × last checkpoint
+  (CP_LAST at 0x9f40; 1-8 start-up, 9-15 main; none = no green group), BOTH × region of the faulting lr
+  (1 loader 0x4000-0x8000, 2 loader 0x20000-0x40000, 3 trampolines, 4 SD stub, 5 loader 0x10000-0x20000, 6 other).
+  Reporter turns caches off first so blinks stay countable. `emu_trace.py --report` verifies the encoding.
+
+* IRQ-masked run (a50c7e8e…): user reported "1 green 4 orange" = report cycle ORANGE×3 + GREEN×1 + BOTH×1 (both LEDs
+  together look orange) ⇒ **data abort, last checkpoint 1, in loader start-up code**: i.e. inside 0x4060 (CPU modes),
+  which has no memory accesses but clears CPSR.A at 0x4070 ⇒ an **asynchronous (imprecise) abort left pending by the
+  boot ROM** fires as soon as the loader unmasks it. Explains every chain failure (earlier builds: same abort into the
+  ROM's high vectors = silent). A cold NAND boot has nothing pending.
+* Next build (card 4ea6db00…): stub `drain_async_abort()` after caches_off: sets an abort-mode stack (0x41f7f000),
+  points the loader's data-abort vector literal [0x30] at `absorb_dabt` (start.S: count + DFSR, `subs pc, lr, #8`),
+  `cpsie a`, short wait, `cpsid a`, restores [0x30]; if one was drained the LED blinks ORANGE ×2 before the hand-over.
+  Stub blink phase shortened to ~2 s. Crash report: region group now LONG blinks of both LEDs, 10-unit pauses.
+
+* Drain run (4ea6db00…): green flicker → **ORANGE ×2 = pending ROM abort drained (diagnosis confirmed on hardware)**
+  → then orange flashing in pairs, user count ambiguous ("5-6 times in double"); no green checkpoint reported.
+  Blink-counting by eye is now the bottleneck.
+* New: **binary crash report + video decoding.** Reporter (loader_trace.py): caches off, then repeating MARK (both
+  LEDs long) and words MSB-first, one blink per bit (GREEN 0 / ORANGE 1): type 4b | last checkpoint 8b | async aborts
+  absorbed 8b | exception lr 32b | DFSR/IFSR 16b | DFAR/IFAR 32b. Loader data-abort vector now absorbs asynchronous
+  aborts (DFSR 0x406/0x408; counted at 0x9f44, resumed with `subs pc, lr, #8`) and only reports precise ones.
+  `re/tools/led_video.py <video>` finds the LED, classifies frames (normalised R/G: G = red low, O = red high & green
+  < 0.8, B = both high), prints blink groups and decodes the report. Verified end to end with
+  `re/tools/synth_led_video.py` (emulated reporter → 30 fps H.264 video → exact report recovered).
+  `emu_trace.py --report` checks three fault types + async absorption. Card ffboot ef59c1bc….
+
+## ✅ 2026-11-08: SD chain boot runs the whole stock loader and enters the firmware (video-decoded)
+`samples/video.mp4` decoded with led_video.py tracking (LED moves in the handheld video; per-frame peak of
+max(R,G)−B): green flicker (inflate) 6–8 s → ORANGE ×2 (pending ROM abort drained) → green checkpoints 1…6 at ROM
+speed (GPIO/clock init and MPU setup run fine) → green 7/8 as 0.4 s bursts (≈14× faster after the loader enables
+caches) → **orange checkpoints 1…7: validity, init, hw-ready wait, section table, all sections loaded from flash,
+0x468c, 0x4ca8** → 72.2 s both LEDs on for 0.1 s (t_final: jump to the firmware) → LED off (firmware re-initialised
+GPIO) → LCD stayed dark for the remaining 15 s.
+Firmware reads of the boot-info block 0x400a0000: GPIO snapshot used for power-on keys (POWER id 6, PLAY id 0x1e;
+blob1 0x85b3xx), port-0 bit 5 (0x85ec44), magic words 'DETS' at +0x40/+0x80 (0x96f014), +0xfc warm flag (blob2
+0xf3ca48). Nothing SD-specific found. Prime suspect now: timing (firmware started 72 s after power-on because of the
+trace blinking; a power/sub-MCU handshake likely expects ~1 s).
+**Production build** (`build_sdchain.py --hook`, stub compiled -DQUIET; card ffboot d9882560…): no delays (LED only
+during inflate), drain, hand-over; loader untouched except the final jump → `loader_hook.py` RAM patcher at 0x9000:
+for each (addr, old, new) write if *addr == old, DCCMVAC, then ICIALLU, jump. Default patch: Ver3.89 marker (blob1
+0x857a98). Emulated: patches only when the old word matches, preserves r0–r6, jumps to the entry.
+Card also holds ffboot_trace.bin (trace build) for later diagnosis.
+
+## 2026-11-08: quiet chain boot + shutter wakes the camera; marker not applied → two-stage hook
+* Quiet build (d9882560…): green flicker, then dark; **pressing the shutter brought the screen up** and photos were
+  taken (DSCF2747–2749), but EXIF said Ver3.82: the Ver3.89 marker did not apply.
+* Why: the loader does not jump to blob1. `0x468c` sets the entry [0x67e0] from **section 0's header (entry 0x40020)**
+  and the argument [0x67e4] = blob1's entry (0x8554c4). blob1 (section 4) is unpacked by a hardware transfer started in
+  `0x4b94` that may still be running when the loader jumps, so at our hook time 0x857a98 was not the expected word and
+  the old-value check skipped it. (v2's word there is the stock 0xe3a03032.)
+* Section 0 (0x40000, "syslog Ver 2.3"): entry installs its own vectors (low or 0xffff0000 per 0x42c88), clears BSS,
+  stack 0x4005a0e0, then main 0x40b64 calls blob1's entry once per phase: `blx r4` with r0 = 0 at **0x40bac**, then 1,
+  3, 2 (and 4 on another path), then starts the OS (0x41588).
+* `loader_hook.py` now two-stage: stage A at the loader's final jump rewrites section 0's 0x40bac `blx r4` →
+  `bl 0x9080` (if unchanged); stage B (0x9080) applies the blob1 patch table (old-value checked, DCCMVAC, ICIALLU)
+  and `bx r4`. Emulated with the real section 0: both stages OK, registers/stack preserved. Card ffboot 7372fdf6….
+* Open: after SD boot the firmware sits with the screen dark until the shutter is pressed (power-save / wake state?).
+
+* Two-stage build (7372fdf6…): photo DSCF2750 still Ver3.82. EXIF Software string confirmed to come from the patched
+  routine: modules 0x151aa34 / 0x163cbd8 / 0x161008c copy "Digital Camera " (0x151aab4 / 0x161122c), append the model
+  (0x858298), then `bl 0x8579e8` (fallback branch writes the "3.82" digits; v2 DB[0x206] = 0). So either the patch
+  did not apply, or the photos come from a normal flash boot triggered by the shutter press (SD-booted firmware dead).
+  (0x857af0's other caller 0xf3db74 builds the USB device descriptor bcdDevice, not EXIF.)
+* Diagnostic hook (`loader_hook.patch(diag=True)`, card ffboot 0d625083…): stage A OK → ORANGE flash; stage B all
+  patches applied → GREEN long flash; failed check → MARK + 32-bit word found (GREEN 0 / ORANGE 1). Emulated: success
+  (O, G, marker applied) and forced mismatch (sent word decodes to the memory value, boot continues).
+
+* Diagnostic hook run (0d625083…): stub green flicker → stage A ORANGE → **no stage B** (no green, no mismatch
+  report). Photo DSCF2751 Ver3.82. ⇒ section 0 never reaches the phase-0 call at 0x40bac; the shutter press starts a
+  normal flash boot. Section 0's 0x42c88 is the same core-0 check as the loader's (DBGDSAR 0x4003). Hang/crash is in
+  0x40460, 0x42810(0), 0x43db4, 0x43fc0 or 0x40d40. **Failure log: `re/FAILURES.md`.**
+
+## Session 2026-11-08: section 0 start-up analysed statically → exception reporter card
+* Section 0 emulated (unicorn, real sections at their RAM addresses, 0 aliased to 0x40000000, core-0 check forced) from
+  its entry 0x40020 to the phase-0 call 0x40bac: 142k instructions, **no hardware polling at all**, CPSR stays
+  0x1d3 (IRQ/FIQ masked). Device accesses: only the interrupt controller 0xfffb3xxx (0x43fc0 → 0x4307c fills 95
+  vector slots 0x400+4n = 0x42d10 and priorities 0x800+4n = 0xf; 0x40d40 → 0x43944/0x43558 registers source 0x5a with
+  handler 0x40d8c, priority 0, enable bit at 0x128/0x088). DRAM only otherwise. No unaligned access, VFP or SVC.
+* Exceptions in that window: vectors 0x24..0x3c ← literal pool 0x400e0 (0x40100 undef, 0x401a8 svc, 0x4011c pabt,
+  0x4013c dabt, 0x4015c reserved, 0x40228 irq, 0x40178 fiq). undef/pabt/dabt/reserved → 0x40dd0: save frame at
+  0x4004d7ac, log (0x42700), then spin at 0x40e60 unless [0x4004d7a0] != 0 (BSS, still 0) ⇒ silent hang.
+* Loader MPU 0x41e8: regions 0–3 only (+4 on core 1), SCTLR |= 0x1005; BTCM never written. ROM leftovers survive.
+* Loader 0x4f58 copies GPIO inputs (0xfff89014 + 0x40·port, 17 ports) to 0x400a0000..; 0x46ec skips the blob1 load
+  (0x4b94) if [0x400a00fc] != 0. blob1 load: memset engine (regs at 0x40021420) + NAND read via buffer 0x42420000 and
+  callback 0x20e50; waits for completion only if the memset call returned 0.
+* Stub reproducibility: `re/sdchain/build.sh <venv python> <outdir>` (zig cc -Os) rebuilds chain.bin and
+  chain_quiet.bin byte-identically to the ones on the earlier cards. Stub .bss: absorbed[] at 0x41f60004/8.
+* **Card `re/build/sdchain_sec0trap/`** (`build_sdchain.py FPUPDATE.DAT chain_quiet.bin out --sec0trap`; ffboot
+  57dae4c0…, ffsys 7661dadc…): quiet stub + drain; loader final jump → `sec0_trap` PRE (0xa000: save SCTLR, MPUIR,
+  enabled-region bitmap, BTCM/ATCM, ACTLR at 0xaf00; repoint the pool at traps 0xa500+8k) → loader_hook stage A
+  (ORANGE) → section 0. Stage B first calls RESTORE (0xa400: original literals back into 0x24..0x3c), then GREEN +
+  marker as before. Trap → caches off → repeating report (sec0_trap.FIELDS, 216 bits, ~65 s per cycle):
+  progress<<4|type, lr, spsr, DFSR/IFSR, DFAR/IFAR, SCTLR, MPU region count, enabled bitmap, BTCM, stub-drained ROM
+  aborts + their DFSR. Decode: `led_video.py <video> --layout sec0`. Emulated (`emu_sec0_trap.py`): clean run →
+  blob1 entry, marker 0xe3a03039, handlers restored, LED O then G; injected dabt at 0x43148 → exact decode, also from
+  a synthetic 30 fps video.
+
+* **sec0trap card result (F18):** stub flicker → stage A ORANGE → nothing. No exception report, no stage B; shutter →
+  flash boot, DSCF2752 "Ver3.82". ⇒ section 0 stops without any CPU exception. Candidates: bus stall on the interrupt
+  controller 0xfffb3xxx (unclocked / held in reset after the ROM's SD boot: no abort, just a hang), or power cut/reset.
+* **Checkpoint card `re/build/sdchain_sec0cp/`** (`--sec0cp`; ffboot aa2865e8…, ffsys 7661dadc…): sec0trap +
+  `sec0_cp.py`: loader final jump → CPI 0xb000 (re-points the five `bl` sites 0x40b90/98/9c/a0/a4 at trampolines,
+  old words checked) → sec0_trap PRE → stage A. Checkpoint k: GREEN ×k, then ORANGE steady while routine k runs.
+  Emulated: clean run O,G,O,GG,O,…,G×5,O,G → blob1 entry; injected dabt in routine 4 → OGOGGOGGGOGGGGO then report.
+  On the card as ffboot.bin; previous ffboot kept as ffboot_sec0trap.bin (and ffboot_hookdiag.bin).
+
+## Session 2026-11-09: warm-resume idea (option 3) ruled out statically
+* Standby (blob2 0x10ae1bc) is in-place: SRAM routine at 0xfff00800 (DRAM self-refresh via 0xfff88000/0xfff88080),
+  returns on wake; then sets [0x400a00fc] = 1 or 2 (wake source 0xfffb3008 bits 28/29) and re-snapshots GPIO.
+* Loader reset 0x4000 writes 0 to 0x400a00fc before anything else ⇒ the blob1-skip at 0x46ec is dead after any
+  restart. Loader reads in 128 KiB blocks; the section-table read 0x4a28(0xe0000 → 0x770000, 1 block) writes
+  0x770000-0x790000 (16 KiB table + zeros), i.e. zeroes blob1's head every boot. main(r5): r5 = core id (0x42bc).
+* Power hold = 0xfff88084 bit 0: set in loader system init (0x50b8), cleared only by the loader error handler 0x450c
+  ⇒ after an SD-boot hang in section 0 the camera stays powered (DRAM refreshed) until the shutter restart.
+* blob1 phase 0 clears its BSS (0x9c89c0 + 0x372bc0) only if section table +8 == 1 (0x7ebdf4 → [0x770008]).
+* Environment is now persistent: `sh re/tools/setup_work.sh` (venv ~/.venvs/xpro1-re, extracted files in re/work/,
+  gitignored); `re/tools/fnasm.py` dumps a function with literals.
+
+## Session 2026-11-09: USB debug firmware (PTP peek/poke/call) — built, not yet flashed
+Goal: read the boot ROM and live hardware state from the PC instead of LED/SD experiments (FAILURES P7).
+* PTP dispatcher blob2 `FUN_00f4521c(phase, request)`: opcode high byte → table, low byte → index:
+  0x10xx → 0xf4c028[≤0x1c], 0x90xx → 0xf4c09c[≤0x1d], 0x98xx → 0xf4c114[≤0x0b], else 0xf4c028[0] = 0xf4bff0 (0x2005).
+  Stock vendor handlers: 0x900c → 0xf494e8, 0x900d → 0xf48664, 0x901d → 0xf482cc; MTP 0x9801.. at 0xf4c118...
+  Supported-op lists 0xf52594 (25 ops) / 0xf52658 (23, chosen when the host's OS descriptor says "Windows").
+* Handler protocol (from GetStorageIDs 0xf4a840 / CloseSession 0xf4bf58): request +0 opcode, +4 session, +8 tid,
+  +0x10.. params; session open = [0x11f3c2c] != 0; status var 0x11f3c30; data container 0x11f3bc8 (FUN_00f45510
+  copies the request, +0x24 data pointer, +0x28 length); buffer = storage callback table [0x11f3bb0] = 0xf5100c,
+  entry +0x1c = 0xf4c144(size, &ptr, 0, kind): kind 7 → 0x42dfad10 (4 MB) or 0x461d9110, min(size, capacity);
+  FUN_00f44ca8(container, 0) sends data or response; FUN_00f459dc(request, container, code) builds the response.
+* `re/tools/build_ptpdebug.py` (v2 file → `re/build/ptpdebug_385/FPUPDATE.DAT`, label 3.85, sha256 64f7d923…):
+  nine dead "not supported" stubs 0xf45a58–0xf45c08 (only table-referenced) → their slots get 0xf4bff0; the cave
+  holds 0x9010 PEEK (addr, len ≤ 0x10000, word reads → data phase), 0x9011 POKE (addr, word), 0x9012 CALL (addr, r0;
+  result word at 0xf45c04). 405 blob2 bytes changed; blob1 and everything outside blob2's partition = v2.
+  Checks: `emu_ptpdebug.py re/work` (real dispatcher, 11 cases incl. no-session and untouched stock ops) ALL OK;
+  output decodes to v2 blob2 + patch; fpupdate.verify OK; 0 tokens across 16 KiB pages (as stock).
+* PC side `re/tools/ptpdebug.py` (pyusb): info / peek / poke / call / dumprom (16 KiB at 0x80000000, compared with
+  fujimod's 7dc7e332…). Framing unit-tested against a fake endpoint with real short-packet behaviour.
+
+## ✅ 2026-11-10: USB debug firmware flashed and working; boot ROM dumped
+* `build/ptpdebug_385/FPUPDATE.DAT` flashed. Camera enumerates as 04cb:0280 "USB PTP Camera"; `ptpdebug.py info`:
+  GetDeviceInfo OK, **debug PEEK works**. `ptpdebug.py dumprom` → `re/work/rom/bootrom_80000000.bin` (gitignored),
+  sha256 **7dc7e332… = fujimod's EXR/EXR Pro ROM**. The ROM is 8 KiB, mirrored twice in the 16 KiB window.
+  Disassembly: `re/work/rom/bootrom.asm`.
+* Reset 0x80000028: SVC, sp 0xfff00f00; MPU region 0 = 0..4 GB normal non-cacheable, region 1 = 0xfff00000 1 MB
+  strongly-ordered XN (subregions 0 and 7 off), MPU on; [0xfff88084] = 1; ROM data → 0xfff00000, BSS
+  0xfff00004–0xfff00448. Boot mode 0x800001a0: bits = (GPIO0 >> 10 | GPIO2 >> 12) & 7 (Fn = bit 0, dial press =
+  bit 1): 0 → 0x8000059c(0), 4 (Fn + dial) → **0x80000690 SD**, bit 2 clear → 0x8000059c(1), (bits & 0xc) == 4 →
+  0x80000770(0) NAND, else 0x80000770(1). Raw bits stored to [0xfff98000]. Success → 0x80001ee0: [0xfff98008] = 1,
+  clear APSR flags, `mov pc, #0`. Failure → wfi loop.
+* SD path 0x80000690: mount 0x80001858(fs = 0xfff00204; sets [0xfff00000] = 0, then the fs pointer), ≤ 3 tries
+  (fail → [0xfff88084] = 0, off); open 0x80001a74("ffsys.bin") (name in r0, fs from [0xfff00000]; 6 = not mounted);
+  read 0x80001b38(0xfff00004, 0x200, &got); params 0x8000024c; tries = ffsys+0x10 bits 8-10; open("ffboot.bin");
+  read(0x40000000, (u16)[0xfff00224] = file size, &got).
+* NAND path 0x80000770: 0x80000970 init, reads the param page (magic 0x00ffaa55 0x01234567 0x89abcdef at +0/+4/+8,
+  same as ffsys.bin), 0x8000024c, loader via 0x80000b04 (uses 0xf7f7e000 / 0xfff46800).
+* Common params 0x8000024c: [0xfff88084] = +0x10 bit 0; clocks 0xfff98000 / 0xfff88000 from +0x14..+0x48; PLL
+  change uses the interrupt controller (0xfffb3108/154/128/088 then wfi, then restores); DRAM controller 0xfffb0000.
+* **Only the SD path touches SDHCI controllers 0xfff44000 (SD0) / 0xfff45000** (standard SDHCI layout: +0 SDMA,
+  +4 blksz, +6 count, +8 arg, +0xc mode, +0xe cmd (0x113a = CMD17), +0x2c clock, +0x30/+0x32 int status). The
+  interrupt controller, clocks, MPU and DRAM setup are identical on both paths.
+* Sector read 0x80001ca4(dst, sector, offset, len): dst in 0x40000000–0x4fffffff → SDMA of the **whole 512-byte
+  sector straight to dst** (offset/len ignored); otherwise via buffer 0xfff00248 + byte copy. ⇒ **F5/F6 explained**:
+  open()'s directory search uses small buffers on the caller's stack; F6's stack in DRAM got whole sectors DMA'd onto
+  it (stack smash); F5's stack top 0xfff01ff8 is beyond the 4 KB SRAM the loader's MPU maps (ROM stack is 0xfff00f00).
+  A working ROM-file-API loader needs its stack in SRAM ≤ 0xfff00f00 (above the ROM BSS / fs struct) and
+  sector-aligned reads into DRAM with ≥ 512 bytes slack.
+* **RAM persists across USB mode** (2026-11-10): POKE 0xf45c04 = 0xc0ffee11 → unplug → photo → replug → still there.
+* **Live tuning DB = RAM 0x40d3b580** (+ ID): 65267/65536 bytes equal the flashed area (file 0xae025c); the 269
+  differing bytes are per-camera data laid over it at start-up (calibration, serial, lens/sensor tables; offsets
+  0x3–0x38a, 0xcbe–0xd8a, 0x1662–0x283c, 0x4b73–0x4d65). Film-simulation tables identical to v2.
+* ✅ **RAM tuning edits take effect live** (2026-11-11): chroma-gain preset ID 0xe4ec (RAM 0x40d49a6c) poked 1 → 2,
+  unplug, in-camera RAW conversion of DSCF2723.RAF with PRO Neg Hi (same settings as DSCF2743) → `samples/DSCF2723 b.JPG`.
+  `re/tools/compare_jpeg.py`: vs v2 conversion DSCF2743 chroma ×1.048 (reds ×1.051), |ΔL*| 0.07, hue 0°; vs the v1
+  JPEG DSCF2723 ×1.000, |ΔL*| 0.02. Exactly v1's processing ⇒ Classic Chrome variants can be tried by POKE + in-camera
+  RAW conversion, no flashing; switching off restores the flashed values.
+* **`re/tools/tune.py`** (2026-11-11): live tuning by parameter ID over USB. show / get / set / setm / setmat /
+  restore / diff; groups cc3x3, cc3x3alt, cc2x2 (×1024 fixed point, 13-bit), chromagain, detail, hstone, curveno.
+  Byte-level read-modify-write on 32-bit POKE with read-back; refuses unless the live byte is the flashed value or
+  the value tune.py last wrote in this power-on session (session tag kept in RAM slot 0xf45c04); per-camera ranges
+  and IDs ≥ 0x10000 refused without --force; log `re/work/tune_log.jsonl`. Offline `selftest` OK; on the camera:
+  set 0xe4ec 02 → show → restore all → diff = flashed.
+
+## Session 2026-11-11: loading a 3D LUT's camera approximation (`tune.py lut`)
+* `luts/ColorReps-classic-chrome.cube`, `luts/fujifake_classicnegative_rossandhisjpegs.cube` (33³; the latter
+  expects Panasonic Lumix STD input). The camera has no 3D-LUT stage → fit with its controls.
+* **Tone-curve format solved**: blob1 table 0x80b700 (29 entries × 0x48: u32 curve#, u8 seg[9], pad, u16 knot[28]).
+  Segment j spans 2^(seg_j+6) of a 0..16384 linear input, 3 equal knots per segment (27) + terminator 0; output 14-bit.
+  Proof: curve #39 (used via ID 0xddca, a linear path) is the identity within ±2. All film-sim curves use seg
+  2 2 3 4 5 5 5 6 6. PROVIA = matrix preset 1 + curve #0 (IDs 0xdf8d/0xdf94, blend weight 100).
+* Curve selectors: method reproduces PRO Neg Hi's 42 IDs exactly; **PRO Neg Std's 42**: 0xde01–0xde12,
+  0xde7f–0xde90, 0xdf90 0xdf97 0xdf9e 0xdfa5 0xdfac 0xdfb3 (0xdfa5/0xdfb3 hold 16 = special mode, kept); shared with
+  no other colour mode. **Unreferenced curve slot #41** at 0x80baa8 (also free after v2: #1–3, #24, #25, #27, #28;
+  #39 is used; override 0xe14d = 0 → curve 28 off).
+* PRO Neg Std selectors: 3x3 sRGB preset 4 (0xdb39…), alt 9 (0xdb93…), 2x2 4 (0xe3c1 m00, 0xe3c3 m11, 0xe3c5 m01,
+  0xe3c7 m10), chroma gain 0xe4eb, detail 0xffc5 (= idx 3 of 0xf2e39c), H/S family 3 planes 0xe13a/0xe141/0xe148.
+  PROVIA refs: 3x3 0xdb03…, alt 0xdb5d…, 2x2 0xe3a9…, H/S 0xe137, chroma gain 0xe4e8, detail 0xfff0.
+* `re/tools/lut_fit.py camera_fit_opt`: model display = curve(M·x) on camera-linear x; target = LUT(PROVIA render);
+  joint least squares (9 matrix + 27 knots, Lab residual, greys ×3). ColorReps CC: ΔE76 median 9.97 → **3.33** (p90
+  6.75, greys 1.43). Classic Negative fake: 19.6 → 7.6 (p90 14.6): hue-dependent look, poor fit.
+* `tune.py lut FILE [--dry-run]`: writes slot #41 knots, ns3x3/ns3x3alt (alt = M·M_P⁻¹·M_Palt), ns2x2 := PROVIA,
+  selectors := PROVIA, 40 curve selectors → 41. Self-test (fake camera incl. blob1) checks PROVIA/PRO Neg Hi untouched,
+  blob1 changed only in slot #41, `restore all` → flashed. Dry run on the camera OK (live curve #0 read).
+  **Not yet tested on images**: convert one RAW as PROVIA / PRO Neg Hi / PRO Neg Std and compare.
+
+## Session 2026-11-11: SD-boot base with breadcrumbs (DRAM notes read over USB) — built, not yet run
+* DRAM = 256 MB 0x40000000–0x4fffffff (no aliasing). After a normal boot most of it holds data; untouched blocks keep
+  the DRAM power-up stripes (00000000/ffffffff words, a few single-bit flips): 0x43d00000–0x43ffffff, 0x46f00000,
+  0x4b600000, 0x4ea00000, 0x4ed00000. Breadcrumb block: **0x43f00000** (1 KB).
+* `re/tools/crumbs.py` (loader patch, 0x9000–0xbfff): snapshot at the final jump (CPSR, SCTLR, MPU, boot ctrl
+  0xfff98000/8, power hold, SDHCI0 +0x24..0x38, intc 0xfffb3000..10c), checkpoints at section 0's five calls, stage B
+  (0x40bac; restores svc/reserved/irq/fiq literals, Ver3.89 marker), blob1 phases 1/3/2 and OS start; fatal vectors
+  (undef/pabt/dabt) → exception record + heartbeat, chaining to section 0's handler if [0x4004d7a0] != 0.
+  Stub `-DCRUMBS` (re/sdchain/main.c, build.sh → chain_crumbs.bin 19069ea8…): header, boot-ROM snapshot, progress
+  0x01–0x03, drained abort count/DFSR. No LED signals except the stub's inflate flicker.
+* Card `re/build/sdchain_crumbs/` (`build_sdchain.py … chain_crumbs.bin out --crumbs`): ffboot f0b41d31…, ffsys
+  7661dadc…. `emu_crumbs.py` ALL OK (stub; clean run to blob1 with marker; phase checkpoints; injected data abort →
+  record + heartbeat; resume flag → chains). Reader `re/tools/sdcrumbs.py` (verdicts incl. DRAM power-up pattern).
+
+## Session 2026-11-11: SD dual boot solved; UI recolouring
+* **Root cause of every SD-boot "dark screen" (FAILURES E25/F21):** blob1's start-up task 0x85505c powers the camera
+  off (0x7a65fc clears power hold 0xfff88084) when the power-on cause is invalid; the cause uses the loader's GPIO
+  snapshot port 2 bit 11, which is gone by the time the SD chain reaches the loader. Fix in `crumbs.py` PRE (set bit
+  11, release Fn/dial in the snapshot). `build/sdchain_poweron/` booted by itself; DSCF2758 EXIF "Ver3.89".
+* Power/DRAM facts (E26, `tools/dramtest.py`): switch OFF/ON = standby, DRAM kept; battery out or power hold = 0 →
+  DRAM lost (00/ff stripes). A photo overwrites DRAM 0x43f00000.
+* `tools/dramdump.py`: whole 256 MB DRAM over USB in 47 s. Live-view buffers YCbCr 4:2:2 640×426 at 0x4250a600,
+  0x425f4c00, 0x426df200, 0x427c9800; layer descriptors around 0x40f8cfb4 (640×480). The menu OSD can't be caught
+  this way (USB mode redraws).
+* **UI colours (E27, `tools/uicolor.py`):** GVFF vector graphics in the UI DB; colour record = tag 0x00001b00 + RGBA
+  float32. list / check / set R,G,B --from R,G,B / swaprg / restore, all live over USB. swaprg (5068 words) made the
+  menu accent green. `crumbs.patch(..., uiswap=True)` / `build_sdchain.py --crumbs --uiswap` does the same at stage B
+  (routine at loader 0xa000; backwards scan, because 7 record pairs overlap). Card `build/sdchain_green/`.

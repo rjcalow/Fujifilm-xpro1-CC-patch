@@ -2,22 +2,26 @@
 # Nothing is written to the camera's flash: the boot ROM loads ffboot.bin, which loads ffuser.bin (a complete RAM image of
 # the firmware, blobs already decompressed) into DRAM and jumps to it.
 #
-# usage: build_sdboot.py <FPUPDATE.DAT (stock or patched 3.82-based)> <fujimod exr-sd-loader.generated.bin> <outdir>
+# usage: build_sdboot.py <FPUPDATE.DAT (stock or patched 3.82-based)> <outdir>
 #                        [--marker 9]   (EXIF "Ver3.8<marker>" so photos show the camera ran from the card; default 9)
+#                        [--fujimod-loader PATH]   (use fujimod's exr-sd-loader.generated.bin instead of ours)
+# Boot: battery out/in, hold Fn + press the command dial, power ON (confirmed on hardware 2026-11-07).
 #
 # Packaging follows fujimod's xpro1-382 recipe (github.com/justjake/fujimod, catalog/recovery/recipes.generated.json and
-# crates/recovery/src/{exr,image}.rs). The fujimod loader binary is NOT part of this repo (the project has no licence);
-# pass its path. Its 388-byte stage was disassembled and checked: copy to SRAM 0xfff00800, ROM open("ffuser.bin"), size
-# check, chunked ROM reads into DRAM from 0, CRC32 check, jump to 0; any error halts (battery pull). No flash access.
+# crates/recovery/src/{exr,image}.rs). Default ffboot.bin = our loader (`sdloader.py`, green-LED progress + error codes,
+# emulator-tested). fujimod's loader is not in this repo (no licence); its 388-byte stage was audited: copy to SRAM
+# 0xfff00800, ROM open("ffuser.bin"), size check, chunked ROM reads into DRAM from 0, CRC32, jump to 0, halt on error.
 import hashlib, os, struct, sys, zlib
 sys.path.insert(0, os.path.dirname(__file__))
 import lz
 
-args = sys.argv[1:]; marker = '9'
+args = sys.argv[1:]; marker = '9'; loader_path = None
 if '--marker' in args:
     k = args.index('--marker'); marker = args[k + 1]; del args[k:k + 2]
-assert len(args) == 3, __doc__
-dat_path, loader_path, out = args
+if '--fujimod-loader' in args:
+    k = args.index('--fujimod-loader'); loader_path = args[k + 1]; del args[k:k + 2]
+assert len(args) == 2, 'usage: build_sdboot.py <FPUPDATE.DAT> <outdir> [--marker 9] [--fujimod-loader PATH]'
+dat_path, out = args
 assert marker.isdigit() and len(marker) == 1
 
 raw = open(dat_path, 'rb').read()
@@ -78,13 +82,17 @@ assert struct.unpack('<3I', ffsys[:12]) == (0x00ffaa55, 0x01234567, 0x89abcdef)
 assert struct.unpack('<I', ffsys[16:20])[0] == 0x300
 ffsys[16:20] = struct.pack('<I', 0x301)                  # hold power through SD load
 
-loader = open(loader_path, 'rb').read()
-assert sha(loader) == LOADER_SHA, 'unexpected fujimod loader binary (re-audit before use)'
-ffboot = bytearray(loader[:LOADER_STAGE])
-assert ffboot[LOADER_CONFIG:LOADER_CONFIG + 20] == bytes(20)
 ffuser = bytes(ram)
-crc = zlib.crc32(ffuser) & 0xffffffff                    # same reflected CRC32 as the loader (0xedb88320, ~init, ~final)
-ffboot[LOADER_CONFIG:LOADER_CONFIG + 20] = struct.pack('<5I', ROM_OPEN, ROM_READ, ROM_FS, len(ffuser), crc)
+crc = zlib.crc32(ffuser) & 0xffffffff                    # same reflected CRC32 as the loaders (0xedb88320, ~init, ~final)
+if loader_path:
+    loader = open(loader_path, 'rb').read()
+    assert sha(loader) == LOADER_SHA, 'unexpected fujimod loader binary (re-audit before use)'
+    ffboot = bytearray(loader[:LOADER_STAGE])
+    assert ffboot[LOADER_CONFIG:LOADER_CONFIG + 20] == bytes(20)
+    ffboot[LOADER_CONFIG:LOADER_CONFIG + 20] = struct.pack('<5I', ROM_OPEN, ROM_READ, ROM_FS, len(ffuser), crc)
+else:
+    import sdloader                                      # our loader with LED progress (needs keystone-engine)
+    ffboot = bytearray(sdloader.build(len(ffuser), crc))
 assert len(ffboot) < 0x10000
 
 os.makedirs(out, exist_ok=True)
