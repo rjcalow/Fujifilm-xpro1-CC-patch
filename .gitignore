@@ -25,6 +25,10 @@ samples/
 *.jpg
 *.RAF
 
+# --- Third-party 3D LUTs (other people's work) -------------------------------------
+luts/
+*.cube
+
 # --- Tooling ----------------------------------------------------------------------
 __pycache__/
 *.pyc
