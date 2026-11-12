@@ -19,11 +19,12 @@ This repository holds two things:
 | Part | State |
 |---|---|
 | Classic Chrome patch **v2** (labelled 3.83) | **Flashed and working** on the test camera. In-camera RAW conversion uses it. The camera still reports Ver3.82 |
-| SD dual boot | **Working** (2026-11-11). Firmware started from the card, photo EXIF "Ver3.89" (a marker only the SD-booted firmware writes). One successful boot so far |
-| Green-UI SD card | Built and emulator-checked, **not yet tried on the camera** |
+| SD dual boot | **Working** (2026-11-11). Firmware started from the card, photo EXIF "Ver3.89" (a marker only the SD-booted firmware writes). Used repeatedly since |
+| SD card with Classic Chrome v3 + green UI (`--crumbs --uiswap --cc`) | **Working for colour** (2026-11-12): an in-camera RAW conversion from the SD-booted firmware matches the v3 values. Menu name and green accent after SD boot: emulator-checked, not yet confirmed on the camera |
 | USB debug firmware (label 3.85) | Flashed and working: memory peek / poke / call over USB (PTP) |
 | Live tuning over USB | Working: parameter changes take effect on the next shot or in-camera RAW conversion |
 | Live UI recolouring over USB | Working: swapping red and green in the UI graphics turns the menu accent green |
+| Classic Chrome **v3 candidate** (`re/tools/build_cc3.py`) | Built, **not flashed**: chroma matched to an X-T20 photo, menu entry renamed CLASSIC CHROME. Confirmed via SD boot. Open: v3 mutes reds much more than Fuji's X-E2 data (×0.63 vs ×0.87 of PROVIA); a colour-chart comparison with the X-T20 comes first |
 
 ## Classic Chrome patch (quick start)
 
@@ -71,7 +72,8 @@ $PY re/tools/emu_crumbs.py FPUPDATE.DAT re/build/mycard/ffboot.bin re/work      
 
 Copy `ffboot.bin` and `ffsys.bin` to the root of a FAT32 card and verify their checksums. Then unmount the card;
 don't power off the reader. `--uiswap` swaps red and green in every UI colour at boot, which makes the menu
-accent green.
+accent green. `--cc` adds the Classic Chrome v3 candidate values and the menu name CLASSIC CHROME (emulator check:
+`re/tools/emu_cchook.py`; not yet booted on the camera).
 
 ## USB debug firmware and live editing
 
@@ -83,6 +85,8 @@ and 0x9012 CALL. It is labelled 3.85 and flashed like any update. With it instal
 | `ptpdebug.py` | `info`, `peek`, `poke`, `call`, `dumprom` (the 16 KiB boot ROM) |
 | `tune.py` | show / set / restore image-processing parameters by ID, colour matrices as numbers, load a 3D LUT's best fit |
 | `uicolor.py` | list / set / `swaprg` / restore the UI's vector-graphic colours |
+| `uiname.py` | show / set / restore the menu name of the PRO Neg. Hi slot (default CLASSIC CHROME) |
+| `ccfit.py` | offline: which chroma matrix produced a Classic Chrome-slot JPEG (needs a PROVIA conversion of the same RAW) |
 | `dramdump.py`, `dramtest.py` | dump all 256 MB of DRAM (47 s); test whether DRAM survives a restart |
 | `sdcrumbs.py` | read the SD-boot progress notes left in DRAM |
 

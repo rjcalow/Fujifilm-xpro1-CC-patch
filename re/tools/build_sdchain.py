@@ -7,14 +7,16 @@
 #   --sec0cp: --sec0trap + LED checkpoints before section 0's five start-up calls (sec0_cp.py)
 #   --crumbs: breadcrumbs in DRAM instead of LED (crumbs.py); use with the chain_crumbs.bin stub; read: sdcrumbs.py
 #   --uiswap: with --crumbs, swap red/green in every UI colour record at stage B (green menu accent)
+#   --cc: with --crumbs, Classic Chrome v3 chroma values + menu name CLASSIC CHROME through run-time hooks (cchook.py);
+#         the flash firmware must be a v2 build (ccswap_v2 or ptpdebug_385)
 #   --hook: production; patch the loaded firmware in RAM before it starts (loader_hook.py; default: Ver3.89 marker)
 #   --markers: patch LED progress markers into the RAM copy of the stock loader (needs keystone-engine):
 #     loader main reached → GREEN; loader finished, jumping to the firmware → GREEN + ORANGE;
 #     loader error handler (0x450c) → ORANGE blinking. Trampolines live in unused 0xff filler at loader 0x9000.
 import hashlib, os, struct, sys, zlib
 args = sys.argv[1:]; markers = '--markers' in args; trace = '--trace' in args; hook = '--hook' in args
-sec0cp = '--sec0cp' in args; uiswap = '--uiswap' in args; sec0trap = '--sec0trap' in args or sec0cp; crumbs = '--crumbs' in args
-for f in ('--markers', '--trace', '--hook', '--sec0trap', '--sec0cp', '--crumbs', '--uiswap'):
+sec0cp = '--sec0cp' in args; uiswap = '--uiswap' in args; cc = '--cc' in args; sec0trap = '--sec0trap' in args or sec0cp; crumbs = '--crumbs' in args
+for f in ('--markers', '--trace', '--hook', '--sec0trap', '--sec0cp', '--crumbs', '--uiswap', '--cc'):
     if f in args: args.remove(f)
 dat, stub_path, out = args[:3]
 raw = open(dat, 'rb').read(); img = bytes(x ^ 0xff for x in raw)
@@ -22,7 +24,7 @@ loader = img[0x4025c:0x4025c + 0x40000]
 assert hashlib.sha256(loader).hexdigest() == 'ff31ef67c7b024a33ea3757cbff3d9564618c9660a90bbbbfecffaf6a31f24a7', 'loader differs from 3.82'
 if crumbs:
     sys.path.insert(0, os.path.dirname(__file__)); import crumbs as crumbs_mod
-    L = bytearray(loader); info = crumbs_mod.patch(L, img[0x8025c:0x8025c + 0xd7a0], uiswap=uiswap); loader = bytes(L)
+    L = bytearray(loader); info = crumbs_mod.patch(L, img[0x8025c:0x8025c + 0xd7a0], uiswap=uiswap, cc_img=img if cc else None); loader = bytes(L)
     print('crumbs:', info)
     stub_check = open(stub_path, 'rb').read()
     assert struct.pack('<2I', 0xfff44024, 0xfff44028) in stub_check, '--crumbs needs the chain_crumbs.bin stub (-DCRUMBS)'

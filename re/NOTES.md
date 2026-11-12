@@ -751,3 +751,86 @@ Goal: read the boot ROM and live hardware state from the PC instead of LED/SD ex
   float32. list / check / set R,G,B --from R,G,B / swaprg / restore, all live over USB. swaprg (5068 words) made the
   menu accent green. `crumbs.patch(..., uiswap=True)` / `build_sdchain.py --crumbs --uiswap` does the same at stage B
   (routine at loader 0xa000; backwards scan, because 7 record pairs overlap). Card `build/sdchain_green/`.
+
+## Session 2026-11-12: tone re-checked, colour matched to the X-T20 sample, menu name (v3 candidate)
+* **Tone is applied** (camera on USB, running `ptpdebug_385`): live curve table (blob1 RAM 0x80b700, 29 entries) holds
+  #38 byte-identical to the X-E2 Classic Chrome curve; all 40 PRO Neg. Hi selectors read 38 (18 + 18 in
+  `FUN_00f3232c`'s tables 0xf3448c / 0xf34298, 4 in `FUN_00f321f0`'s); `tune.py diff`: live area = flashed.
+  `FUN_00f32808` picks `FUN_00f321f0` or `FUN_00f3232c` by recctl+0x104 / +0x180; both end at curve 38. PROVIA uses
+  curve #0 in every entry of its tables, so there is no DR-specific curve to port.
+* **2x2 chroma matrix axis order: [Cr, Cb]** (m00 = Cr gain, m11 = Cb gain). Two checks: (1) predicting the Classic
+  Chrome shot DSCF2697 from the PROVIA shot DSCF2696 through the known matrices and curves gives mean Δab 1.06 with
+  [Cr, Cb] and 1.52 with [Cb, Cr]; (2) PROVIA's effective linear matrix is closer to the sensor's colorimetric matrix
+  (dcraw X-Pro1) with [Cr, Cb] (distance 0.69 vs 0.95; same for the other film simulations). Not yet confirmed by a
+  one-axis poke + RAW conversion.
+* **Pipeline model used:** JPEG → Y'CbCr (BT.601) → undo 2x2 → inverse tone curve per channel → new 3x3 · old 3x3⁻¹ →
+  tone curve → 2x2. Scratch scripts only (not in the repository).
+* **X-Pro1 (`xpro1 cc 1.JPG`, v1, ISO 320) vs X-T20 (`xt20 cc1.jpg`, genuine Classic Chrome, DR400)**, 12 patches,
+  white balance / exposure normalised on four neutral patches: the X-Pro1 is greener in everything (fence a* −5.8 vs
+  −3.4, grass −18.5 vs −14.8, weathered wood +5.8 vs +2.6), b* equal. Fitting the 2x2: **[[0.67, −0.03], [0.035, 1.01]]**
+  (v2: [[0.959, 0.034], [0.016, 1.066]]) → mean Δab 2.10 → 0.74. Fitting the 3x3 as well: 0.73, so the 3x3 stays.
+  Limits: one overcast scene, no saturated reds, blue sky or skin; the two cameras' sensors and AWB differ. The
+  third-party LUT `ColorReps-classic-chrome.cube` does not support the change (it prefers Cr gain 0.82–0.97).
+* **Menu text (`tools/uiname.py`):** 35 language blocks of 0x20000 at file 0x104025c (flash 0x1040000), whole block
+  loaded to RAM 0x4f0000 (resource table blob1 0x84bd1c: {flash offset, block count, RAM address}; English = block 1).
+  Block = packed UTF-16LE strings + 12-byte text descriptors {string pointer, 100, 100, alignment} + pointer table,
+  absolute addresses. "PRO Neg. Hi" occurs 3× per block (one with icon U+F201; the icon follows the name in the
+  three right-to-left blocks 22, 23, 30), each behind one descriptor. New string goes into the unused 0xff tail of the
+  block, descriptors are repointed. Icons, EXIF FilmMode and the ASCII names in module 0x41 are untouched.
+* **Live on the camera (RAM only, until the battery is removed):** `uiname.py set` (CLASSIC CHROME) and
+  `tune.py setmat cc2x2 0.67 -0.03 0.035 1.01`. Not yet looked at on the camera.
+* **Builds (`tools/build_cc3.py`, not flashed):** `build/cc3_candidate/` (v2 + both changes, label 3.86, sha 72fe08f5…)
+  and `build/cc3_ptpdebug/` (same on top of the USB debug build, label 3.87, sha 66cbf5b2…). Checked: container
+  checksums, blob1 decodes with the independent decoder, no page-straddling token, blob2 identical to the base,
+  changes = 4 matrix values (both copies) + 3649 language-block bytes. After flashing `cc3_ptpdebug`, run tune.py
+  with `XPRO1_INSTALLED=re/build/cc3_ptpdebug/FPUPDATE.DAT`.
+* User (2026-11-12): the live rename shows CLASSIC CHROME in the menu. Colour not yet judged on a conversion.
+
+## Session 2026-11-12: Classic Chrome v3 on the SD dual-boot card (run-time hooks) — built, emulated, not yet booted
+* Neither data set can be patched at stage B: both are read from flash after the firmware starts.
+  **Tuning area:** blob1 `0x857e44` = load(0x40d3b580, 0xb3700) through `0x863940` (128 KiB block reads), called from
+  blob2 0xf28578 / 0xf7da88 / 0xf8150c. This answers the open question: the run-time area comes from flash 0xae0000,
+  not from the blob1 copy 0x812470. **Language block:** blob1 `0x86334c(language 0..0x22)` → `0x8632a4` → RAM
+  0x4f0000 (callers 0x7a0290, 0x970d2c).
+* `tools/cchook.py`: stage B redirects the `bl` at 0x857e5c and 0x863388 (old words checked) to hooks in the loader
+  filler 0xa400–0xaae0. Hook 1 rewrites the four 2x2 values if they hold the v2 values. Hook 2 writes a
+  `uiname.py`-compatible tail at block offset 0x1f000 and repoints the matching descriptors (table of all 105).
+  The loader area 0x9000–0xbfff is still 0xff in the running flash-booted firmware (USB read), MPU region 0 is
+  executable, and the firmware's own MPU routine (0x9710e0) only adds no-access guard regions 5–7.
+* `build_sdchain.py --crumbs [--uiswap] --cc`; cards `build/sdchain_cc/` (ffboot 6239132a…) and
+  `build/sdchain_cc_green/` (ffboot 18ec6554…, **on the user's card**, ffsys 7661dadc…). Without `--cc` the builder
+  still reproduces the previous green card byte for byte (276f1752…).
+* `tools/emu_cchook.py` ALL OK: stage B changes exactly the marker + two call sites; real blob1 0x86334c for all 35
+  languages → CLASSIC CHROME, three descriptors, `uiname.unpatch` restores the block, r0 and stack kept, no entry
+  matches a foreign language, failed read writes no descriptor; real 0x857e44 → only the four values change, v3 or
+  official 3.82 values stay. `emu_crumbs.py` ALL OK on both cards.
+* **Camera test (one question: do the hooks run?)** Battery out and in, Fn + dial press at power-on. Then USB:
+  `uiname.py show` → 'CLASSIC CHROME', `tune.py show cc2x2` → live 0.670 / −0.030 / 0.035 / 1.010; a photo's EXIF
+  says Ver3.89. Not proven on hardware: that the hook area stays executable and untouched in an SD boot.
+
+## Session 2026-11-12 (later): first --cc card result, start-up tuning load found, card fixed
+* New samples, all in-camera conversions of DSCF2730.RAF under the SD-booted firmware (EXIF Ver3.89, card ffboot
+  18ec6554…): DSCF2761 PROVIA, DSCF2759 CC slot, DSCF2760 CC slot Colour −1 / Highlight +1, DSCF2762 Velvia.
+* `tools/ccfit.py DSCF2761 DSCF2759`: the CC slot is explained by the **v2** 2x2 (median Δab 0.56; v3 2.13); best
+  fit [[0.948, 0.035], [0.028, 1.064]] ≈ v2 [[0.959, 0.034], [0.016, 1.066]]. ⇒ the tuning hook did not run. This also
+  **confirms the 2x2 axis order [Cr, Cb]**: only that order recovers the known flashed values (the [Cb, Cr] fit gives
+  [[0.82, −0.03], [0.13, 1.22]]). The simulator predicts a same-RAW conversion to median Δab ≈ 0.55.
+* v2 CC slot vs PROVIA on this RAW (chroma ratio, by PROVIA hue): red cap ×0.89, leaves ×0.90, yellow ×0.77,
+  foliage ×0.76, blue ×0.71; cap red C* p90 54.0 → 47.1 (Velvia 69.6).
+* **Cause:** the tuning area is filled at start-up by blob1 **0x858394** (called once from the start-up task,
+  0x8550d4), reading flash through 0x862b24 / 0x862754 (same partition table entry +0x120/+0x124 as 0x863940).
+  It checks DB[0x200..0x201] == 0xaa55 and otherwise falls back to 0x863498 + defaults 0x8581c4. 0x857e44 is only a
+  reload path. Fix in `cchook.py`: stage B also redirects the `bl` at 0x8550d4 (hooks HOOK_DB0 0xa400 start-up,
+  HOOK_DB1 0xa480 reload, HOOK_LANG 0xa500). `emu_cchook.py` now runs the real call at 0x8550d4: ALL OK.
+* Card rewritten: `build/sdchain_cc_green/` ffboot **8436762b…** (ffsys 7661dadc… unchanged); `build/sdchain_cc/`
+  165b07d0…. The flash candidates `cc3_*` are unaffected (both paths read the flash area they patch).
+* Language hook: not yet confirmed after an SD boot (the earlier "menu says CLASSIC CHROME" was the live RAM rename).
+* ✅ **Fixed card works (2026-11-12):** DSCF2763 (DSCF2730.RAF, CC slot, Colour 0, Ver3.89, card 8436762b…):
+  `ccfit.py DSCF2761 DSCF2763` → best fit [[0.658, −0.041], [0.043, 1.006]], **closest to v3** (v3 median Δab 0.54,
+  v2 2.27). The start-up tuning hook runs in an SD boot. Per hue vs PROVIA (v2 → v3, simulator prediction for v3):
+  red cap ×0.874 → ×0.634 (pred. 0.644), leaves 0.899 → 0.723, yellow 0.771 → 0.725, foliage 0.756 → 0.688,
+  blue 0.707 → 0.644; cap red C* p90 54.0 / v2 47.1 / v3 34.5; ΔL* v3 vs v2 0.23 (tone unchanged).
+* **Caution on reds:** relative to PROVIA's 2x2, v3 scales Cr by 0.67 / 1.206 = ×0.56, Fuji's X-E2 Classic Chrome
+  by 1.008 / 1.268 = ×0.79 (= v2). The X-T20 scene that v3 was fitted to had no saturated reds, so v3's red
+  strength is not backed by a genuine reference yet. Needed: an X-T20 Classic Chrome shot of a red subject.
+

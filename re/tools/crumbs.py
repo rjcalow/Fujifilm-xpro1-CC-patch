@@ -13,7 +13,8 @@
 #   loader final jump 0x405c → PRE: snapshot, progress 0x10, section 0's fatal vectors → traps, section 0 call sites →
 #   checkpoint trampolines, phase-0 call 0x40bac → STAGE_B, then I-cache invalidate and the original `mov pc, r3`.
 #   STAGE_B: progress 0x20, puts section 0's svc/reserved/irq/fiq literals back (fatal ones stay trapped), applies the
-#   Ver3.89 marker in blob1 (old word checked), then `bx r4` like the original `blx r4`.
+#   Ver3.89 marker in blob1 (old word checked), then `bx r4` like the original `blx r4`. With cc_img (the decoded
+#   update image) it also redirects two blob1 calls to the Classic Chrome hooks at 0xa400 (cchook.py).
 #   Traps (undef / prefetch / data abort): if section 0's "resume after exception" flag [0x4004d7a0] is set, chain to
 #   section 0's own handler; otherwise write the exception record and count forever at 0x1f0 (no stack, no LED).
 import struct
@@ -60,7 +61,7 @@ BOOTINFO, KEYS_SEEN, KEYS_P0_SET, KEYS_P2_SET = 0x400a0000, 0x2f0, 0xc00, 0x800
 UI_DB, UI_DB_LEN, UI_TAG, UISWAP = 0x130000, 0x215a54, 0x1b00, 0xa000
 
 
-def patch(L, S0, uiswap=False):
+def patch(L, S0, uiswap=False, cc_img=None):
     ks = Ks(KS_ARCH_ARM, KS_MODE_ARM)
     asm = lambda src, at: bytes(ks.asm(src, at)[0])
     imm = lambda r, v: f'movw {r}, #{v & 0xffff}\n    movt {r}, #{v >> 16}'
@@ -195,6 +196,10 @@ beat:
     {imm('r1', SLOTS[i])}
     {imm('r2', POOL_OLD[i])}
     str r2, [r1]''' for i in range(7) if i not in FATAL)
+    markers = list(MARKER); cc_info = None
+    if cc_img is not None:                             # Classic Chrome v3 values + menu name: run-time hooks (cchook.py)
+        import cchook
+        extra, cc_info = cchook.install(L, cc_img, asm, bl); markers += extra
     marker = ''.join(f'''
     {imm('r1', a)}
     ldr r2, [r1]
@@ -202,7 +207,7 @@ beat:
     cmp r2, r3
     {imm('r3', new)}
     streq r3, [r1]
-    mcreq p15, 0, r1, c7, c10, 1''' for a, old, new in MARKER)
+    mcreq p15, 0, r1, c7, c10, 1''' for a, old, new in markers)
     if uiswap:
         swap = asm(f'''
     push {{r1, r2, r3, r4, r5, r6, r7, r8, lr}}
@@ -291,4 +296,4 @@ sw_next:
     mov pc, r3''', PRE)
     put(PRE, pre, REC)
     L[0x405c:0x4060] = asm(f'b {PRE:#x}', 0x405c)
-    return {'pre': PRE, 'rec': REC, 'traps': trap_at, 'stage_b': STAGE_B, 'tramps': TRAMPS, 'uiswap': uiswap}
+    return {'pre': PRE, 'rec': REC, 'traps': trap_at, 'stage_b': STAGE_B, 'tramps': TRAMPS, 'uiswap': uiswap, 'cc': cc_info}

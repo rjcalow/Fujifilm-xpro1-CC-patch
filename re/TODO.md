@@ -1,18 +1,34 @@
 # TODO: X-Pro1 Classic Chrome (next sessions)
 
-Status (2026-11-09): **v2 flashed and working** (PRO Neg Hi slot = Classic Chrome, chroma-gain fix active; camera
+Status (2026-11-12): **v2 flashed; v3 candidate (X-T20-fitted chroma + menu name CLASSIC CHROME) runs from the SD
+card and is confirmed by a conversion**; reds still need a genuine reference before flashing v3.
+Earlier status (2026-11-09): **v2 flashed and working** (PRO Neg Hi slot = Classic Chrome, chroma-gain fix active; camera
 still reports Ver3.82). **SD dual boot paused**: ROM + stub + stock loader work, section 0 stops before blob1 (no CPU
 exception); every remaining unknown is in the boot ROM. See `FAILURES.md` ("Where it stands", "Next step").
 Details: `NOTES.md` (sessions 2026-11-06 to 2026-11-09) and `classic_chrome/CLASSIC_CHROME.md`.
 Environment: `sh re/tools/setup_work.sh` (venv `~/.venvs/xpro1-re`, extracted firmware in `re/work/`).
 
 ## NOW
+- [x] (2026-11-12) **v3 runs from the SD card**: card `build/sdchain_cc_green/` (ffboot 8436762b…). DSCF2763 (CC slot,
+      DSCF2730.RAF) fits the v3 2x2 (`ccfit.py`, Δab 0.54; v2 2.27). The first card (18ec6554…) missed the start-up
+      tuning load (DSCF2759 = v2). 2x2 axis order [Cr, Cb] confirmed by the same data.
+- [ ] After an SD boot: does the menu say CLASSIC CHROME and is the menu accent green? (Language hook and UI swap
+      are emulator-checked only.)
+- [ ] **Colour-chart test before flashing v3** (reds are the open question: v3 gives ×0.63 of PROVIA's red chroma,
+      Fuji's X-E2 data ×0.87). Needs a ColorChecker-type chart (24 patches; a clone is fine for this method).
+      1. Same light (daylight, overcast ideal), chart filling the middle third, both cameras, RAW + JPEG,
+         WB fixed (Daylight or a custom WB off the grey patch), Colour 0 / Highlight 0 / Shadow 0, DR100.
+      2. X-T20: convert its RAW in camera as PROVIA and as Classic Chrome. X-Pro1: same RAW as PROVIA and CC slot.
+      3. Per patch, compare the CC/PROVIA change on each camera (the ratio cancels the sensor differences).
+         Same change → port correct; different → refit the 2x2 (and 3x3 if hue shifts differ) to the X-T20's
+         change, try live with `tune.py setmat`, convert again, flash only the final values.
+      Tool still to write: patch extraction for a 4×6 chart from four corner clicks, then the ratio fit (ccfit.py's
+      pipeline model). Without a chart: a varied colourful scene (fruit, packaging, a magazine page) in daylight
+      works for the same ratio method; a chart shown on a screen is a weaker fallback.
 - [x] (2026-11-11) **SD dual boot works**: `build/sdchain_poweron/` (FAILURES E25). Fn + dial press at power-on → screen
       comes up by itself, RAM marker Ver3.89 present.
 - [x] EXIF "Ver3.89" confirmed: `samples/DSCF2758.JPG` / `.RAF` (2026-11-11 12:39).
 - [x] (2026-11-11) Menu accent red → green found live (FAILURES E27: R/G swap of every UI colour record).
-- [ ] **Green-UI SD card** `build/sdchain_green/` (ffboot 276f1752…): power-on card + UI colour swap at stage B,
-      emulated (byte-exact vs the live-tested swap). Test: Fn + dial press boot → menu accent green, photo EXIF Ver3.89.
 - [ ] Narrow the swap to the menu accent only (bisect the records with `uicolor.py set --from/--skip/--limit`), and
       try a darker menu background the same way.
 - [ ] Production SD card: quiet stub + loader_hook with the power-on snapshot fix (no traps/checkpoints) and the real
@@ -26,8 +42,7 @@ Environment: `sh re/tools/setup_work.sh` (venv `~/.venvs/xpro1-re`, extracted fi
 - [x] (2026-11-11) Live tuning works (FAILURES E24); `re/tools/tune.py` built and tested on the camera.
 - [ ] **LUT test** (10 min): USB → `tune.py lut luts/ColorReps-classic-chrome.cube` → unplug → convert one RAW as
       PROVIA, PRO Neg Hi, PRO Neg Std → compare (expected ΔE ~3 to the real LUT applied to the PROVIA JPEG).
-- [ ] **Colour-accuracy test, live**: X-T20 genuine Classic Chrome reference vs X-Pro1 conversions; adjust
-      cc3x3 / cc2x2 with `tune.py setmat`, convert the same RAW in camera, `compare_jpeg.py`. Flash only the final values.
+- [ ] (superseded by the colour-chart test in NOW) Colour-accuracy test, live: X-T20 reference vs X-Pro1 conversions.
 - [ ] Analyse the boot ROM: SD-boot path and what it leaves behind, mount + file API (FAILURES E20), the pending abort.
 - [ ] Optional, zero risk (user's call): ask fujimod's maintainer for the EXR ROM image or its mount address.
 - [x] Section 0 analysed (no hardware waits, exceptions = silent hang); exception-trap card → no exception (F18);
@@ -58,8 +73,8 @@ Versions/rollback rules (no official downgrade or re-install; label 3.83+; rollb
 `NOTES.md` → "Firmware versions, downgrades and rollback".
 
 ## Open questions (static, no camera)
-- [ ] Where the tuning DB (RAM 0x40d3b580) is filled from at run time: flash 0xae0000 via the block reader (likely) or the
-      blob1 mirror 0x812470. Decides whether SD-booted tuning edits need a flash-read redirect (fujimod has none for EXR Pro).
+- [x] (2026-11-12) The tuning DB (RAM 0x40d3b580) is filled from flash 0xae0000 at run time (blob1 0x857e44 → 0x863940),
+      not from the blob1 mirror. SD-booted tuning edits hook that call (`tools/cchook.py`).
 - [ ] How C_JIG (factory adjustment mode) is entered, to tell it apart from the ROM mode for certain.
 - [ ] Meaning of X-Pro1 `+200` / X-E2 `+0x10c` (colour space?). Replace the approximate alt 3×3, and port the alt-path 2×2
       (table 0xf2dea8, Neg Hi still preset 10 = stock) if it is the Adobe RGB path.
