@@ -34,7 +34,8 @@ sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(ROOT, 'public'))
 DB_RAM = 0x40d3b580
 DB_FILE = 0xae025c
 DB_LEN = 0x10000
-INSTALLED = os.path.join(ROOT, 're', 'build', 'ptpdebug_385', 'FPUPDATE.DAT')   # firmware on the camera
+INSTALLED = os.environ.get('XPRO1_INSTALLED') or \
+    os.path.join(ROOT, 're', 'build', 'ptpdebug_385', 'FPUPDATE.DAT')            # firmware on the camera
 STOCK = os.path.join(ROOT, 'FPUPDATE.DAT')                                       # official 3.82
 LOG = os.path.join(ROOT, 're', 'work', 'tune_log.jsonl')
 # per-camera data the firmware lays over the area at start-up (measured 2026-11-10): never write here by default

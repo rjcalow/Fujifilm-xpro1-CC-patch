@@ -176,6 +176,9 @@ sensor-specific base tuning and applies CC's change from PROVIA):
 * 3×3 sRGB: `[[1.388,-0.304,-0.083],[-0.034,1.016,0.017],[0.105,-0.198,1.093]]`, raw `058d 1ec8 1fab 1fdd 0411 0012 006b 1f35 045f`
 * 2×2: `[[0.959,0.034],[0.016,1.066]]`, raw (storage m00,m11,m01,m10) `03d6 0444 0023 0010`
 * Alternative: copy the X-E2 CC matrices verbatim (the cameras' PROVIA matrices differ by only a few percent).
+* **v3 candidate (2026-11-12, `re/tools/build_cc3.py`):** 2×2 `[[0.670,-0.030],[0.035,1.010]]`, raw (storage m00,m11,m01,m10)
+  `02ae 040a 1fe1 0024`. This is a fit to a genuine X-T20 Classic Chrome photo, not Fuji's X-E2 data. The 2×2 acts on
+  `[Cr, Cb]`. Details: `../NOTES.md`, session 2026-11-12.
 
 ### Strategy B: a real 14th film sim (Classic Chrome as a new menu item)
 Data (as in A, but in new preset slots instead of overwriting Neg Hi), plus code:
