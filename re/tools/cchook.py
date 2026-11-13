@@ -54,14 +54,18 @@ def lang_table(img, old=uiname.OLD):
     return out
 
 
-def install(L, img, asm, bl):
-    """Write hooks + tables into the loader image L. Returns the blob1 patches for stage B: [(addr, old, new)]."""
+def install(L, img, asm, bl, lang=None, db_params=None):
+    """Write hooks + tables into the loader image L. Returns the blob1 patches for stage B: [(addr, old, new)].
+    lang: optional (entries [(descriptor RAM address, original pointer, new pointer)], tail template) replacing the
+    PRO Neg. Hi rename (fsim11.py: separate Classic Chrome menu entry). Default None = the v3 rename.
+    db_params: (id, old hex, new hex) u16 entries for the tuning hooks; default PARAMS3 (v3 2x2 in PRO Neg. Hi)."""
     assert all(b == 0xff for b in L[AREA:AREA_END]), 'hook area is not free filler'
     imm = lambda r, v: f'movw {r}, #{v & 0xffff}\n    movt {r}, #{v >> 16}'
     db = b''.join(struct.pack('<IHH', DB_RAM + pid, *struct.unpack('<HH', bytes.fromhex(old + new)))
-                  for pid, old, new in PARAMS3) + bytes(8)
-    lt = lang_table(img); lang = b''.join(struct.pack('<3I', *e) for e in lt) + bytes(12)
-    tmpl = tail_template()
+                  for pid, old, new in (PARAMS3 if db_params is None else db_params)) + bytes(8)
+    lt, tmpl = (lang_table(img), tail_template()) if lang is None else lang
+    lang = b''.join(struct.pack('<3I', *e) for e in lt) + bytes(12)
+    assert len(tmpl) == TAIL_LEN
     HOOK_DB = [AREA, AREA + 0x80]; HOOK_LANG = AREA + 0x100; DATA = AREA + 0x1c0
     DB_TAB = DATA; TMPL = DB_TAB + len(db); LANG_TAB = TMPL + len(tmpl)
     assert LANG_TAB + len(lang) <= AREA_END
@@ -127,7 +131,7 @@ ln_done:
     assert all(len(c) <= 0x80 for c in code_db) and len(code_lang) <= 0xc0
     for c, at in zip(code_db, HOOK_DB): L[at:at + len(c)] = c
     L[HOOK_LANG:HOOK_LANG + len(code_lang)] = code_lang
-    L[DATA:DATA + len(db) + len(tmpl) + len(lang)] = db + tmpl + lang
+    L[DB_TAB:DB_TAB + len(db)] = db; L[TMPL:TMPL + len(tmpl)] = tmpl; L[LANG_TAB:LANG_TAB + len(lang)] = lang
     sites = [(site, bl(site, fn), bl(site, at)) for (site, fn), at in zip(DB_SITES, HOOK_DB)]
     return sites + [(SITE_LANG, bl(SITE_LANG, FN_LANG), bl(SITE_LANG, HOOK_LANG))], \
            {'hook_db': HOOK_DB, 'hook_lang': HOOK_LANG, 'db_tab': DB_TAB, 'tmpl': TMPL, 'lang_tab': LANG_TAB,

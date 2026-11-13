@@ -55,6 +55,10 @@ Environment: `sh re/tools/setup_work.sh` (venv `~/.venvs/xpro1-re`, extracted fi
       deviation from Fuji's X-E2 data, not a port; use SD boot to try variants without flashing.
 - [ ] Tone check: same scene, manual exposure + Daylight WB, PROVIA vs PRO Neg Hi(CC), to see curve #38's shadows.
 
+- [ ] Extended Highlight/Shadow (NOTES 2026-11-12, "Highlight / Shadow tone mapped"): pick the slot mapping, then a
+      live test: POKE rewritten curves into blob1 RAM 0x8098e0, convert one RAW at H/S −2 / 0 / +2, compare L* by band.
+      Open: is a gain above 5604 accepted (register width)?
+
 ## Done 2026-11-06
 - [x] Reds too strong on v1: chroma-gain preset (ID 0xe4ec, `FUN_00f2c8fc`) was Neg Hi's (up to ×1.15); X-E2 CC uses PROVIA's.
       Audit of every colour-mode lookup on both cameras found nothing else. v2 = v1 + that byte.
@@ -86,6 +90,17 @@ Versions/rollback rules (no official downgrade or re-install; label 3.83+; rollb
 
 ## Later / optional
 - [ ] Real 14th film sim (Strategy B, `classic_chrome/CLASSIC_CHROME.md` §4); needs the UI resource DB format (menu, icon).
+      (2026-11-12 night) Started: use the hidden fsim 6 / colour mode 1 slot (NOTES, last session). Next: decode the
+      film-sim menu list (shooting menu + Q menu) and the cm→index patches; test on an SD card (USB mode unloads settings).
+      (late night) Data side mapped (property 0x3d, conversion row 10 free, six value lists). Open: how a menu screen
+      draws item k (text/icon) — find the screen-resource format; then build the SD card.
+      (2026-11-13) 11th menu row works on the camera (blank). Everything known + free space: `FINDINGS.md`.
+- [x] (2026-11-13) **SD card with Classic Chrome as its own entry works on the camera**: `build/sdchain_cc11_green/`
+      ffboot 1923db4f… (icon + name in the pop-up and on the shooting-menu line, Classic Chrome look borrowed from
+      PRO Neg. Hi's slot). On the user's card.
+- [x] (2026-11-13) Own look data for film sim 6 + PRO Neg. Hi back to stock: `tools/cclook.py`, card
+      `build/sdchain_cc11own_green/` (ffboot 2edd070e…), emulator ALL OK, applied live. **Photos pending** (FINDINGS §7.1).
+- [ ] New entry in Q menu, bracketing, RAW conversion, shooting-screen indicator, EXIF FilmMode (FINDINGS §7.3).
 - [ ] X-E1 (same EXR Pro) may take the same patch with its own offsets (fujimod has an xe1-271 recipe too).
 - [ ] Make `tools/cc_port.py` / `build_ccswap.py` take input paths (they assume the old scratch layout `work/`, `x4/`).
 - [ ] Share findings with fujimod / FujiHack (version-check / "stock updater acceptance", SD trigger from the service

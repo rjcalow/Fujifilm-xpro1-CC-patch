@@ -32,8 +32,9 @@ OPS = {0x9010: 'peek', 0x9011: 'poke', 0x9012: 'call'}
 MAXLEN = 0x10000
 
 
-def handlers():
-    """Assemble the three handlers into the cave; returns (code, {peek, poke, call, result: address})."""
+def handlers(base=CAVE, ops=('peek', 'poke', 'call'), limit=CAVE_END):
+    """Assemble the handlers at base (default: all three into the blob2 cave); returns (code, {name: address}, and
+    'result' when CALL is included). romdump/build_dumpcard.py assembles PEEK alone into the loader filler."""
     ks = Ks(KS_ARCH_ARM, KS_MODE_ARM)
     imm = lambda r, v: f'movw {r}, #{v & 0xffff}\n    movt {r}, #{v >> 16}'
     respond = f'''
@@ -134,11 +135,12 @@ result:
     .word 0'''
     code = b''; at = {}
     for name, src in blocks.items():
-        a = CAVE + len(code); at[name] = a
+        if name not in ops: continue
+        a = base + len(code); at[name] = a
         part = bytes(ks.asm(src, a)[0])
         code += part + bytes(-len(part) % 8)
-    at['result'] = at['call'] + len(bytes(ks.asm(blocks['call'], at['call'])[0])) - 4
-    assert CAVE + len(code) <= CAVE_END, f'handlers {len(code)} B do not fit the {CAVE_END - CAVE} B cave'
+    if 'call' in at: at['result'] = at['call'] + len(bytes(ks.asm(blocks['call'], at['call'])[0])) - 4
+    assert base + len(code) <= limit, f'handlers {len(code)} B do not fit the {limit - base} B space'
     return code, at
 
 

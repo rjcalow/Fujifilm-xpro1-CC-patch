@@ -834,3 +834,229 @@ Goal: read the boot ROM and live hardware state from the PC instead of LED/SD ex
   by 1.008 / 1.268 = ×0.79 (= v2). The X-T20 scene that v3 was fitted to had no saturated reds, so v3's red
   strength is not backed by a genuine reference yet. Needed: an X-T20 Classic Chrome shot of a red subject.
 
+
+## Session 2026-11-12: Highlight / Shadow tone mapped (feasibility of extended H/S)
+* **Stage:** `FUN_00f32c08` (callers `FUN_00f28a60`, `00f28b24`, `00f28b54`) writes 19 u16 to regs +0x2a..+0x4e.
+  The alternative `FUN_00f32a30` writes a flat value into the same 19 regs in 1/3 EV steps (800, 632, 503, 400 … 100,
+  ×512/100) ⇒ the 19 values are a **luminance-dependent digital gain, 512 = ×1.0**, knot 0 = shadows, knot 18 = white
+  (always 512). Not the 29-entry film-sim tone curves (0x80b700); those are a separate stage.
+* **Inputs:** recctl +0xbc = Highlight, +0xc0 = Shadow, stored as menu position 0..4 = +2 HARD … −2 SOFT; tables
+  0xf34478 / 0xf34480 = [4,3,0,1,2] → column 0 std, 1 −1, 2 −2, 3 +1, 4 +2. Column c (0..3) from recctl +0x118 via
+  0xf34484, +0x154 == 2 → 0, plane 1/2 → 1 (shadow gain ×0.86 / ×1.75 / ×3.5 / ×7 in set 0: looks like DR).
+  ID = u16 0xf33df0[set*100 + (H*5 + S)*4 + c]; DB byte at that ID (0xe06f–0xe136) = curve number.
+  Set = 1 if the H/S family byte (IDs 0xf34180[plane*7+fam], 0xe137–0xe14b) == 2, else 0. Plane 0: PROVIA and
+  CC (0xe13b patched 2 → 1 in v1) use set 0; everything else, and planes 1–2, use set 1. DB[0xb5] == 1 → fixed curve DB[0xe06e].
+* **Curve table:** blob1 0x8098e0, 175 entries × 0x2c {u32 id; u16 gain[19]; u16 0}, count u32 @0x80b6fc;
+  loader blob1 0x8057e8 (linear search by id, not found → entry 0; base hard-coded by movw/movt). Only `FUN_00f32c08`
+  uses it. Set 0 = curves 0–99, set 1 = 100–174 (columns 0 and 1 share 100–124). Every entry is referenced.
+* **Model, exact to 1 % on all 200 selections:** curve(H, S, c) = std(c) × S-ratio(S, c) × H-ratio(H, c), i.e. H and S
+  add in EV. Steps are linear in EV (±2 offset ≈ 2 × ±1 at every knot). Size of ±2: shadow ≈ ±0.8 EV at knot 0,
+  ±0.4 EV at knots 4–6, 0 at knot 10; highlight only ±0.35 EV peak (knots 13–16), 0 at knots ≤ 11 and at white.
+* **Camera check (existing samples):** DSCF2759 (H 0) vs DSCF2760 (H +1, Colour −1), same RAW, SD-booted: mean ΔL* 0.0
+  for L* < 60, +0.8 / +2.7 / +3.0 / +1.5 for L* 60–70 / 70–80 / 80–90 / 90–100. ⇒ +0xbc really is Highlight, and
+  hard = brighter highlights, as the table predicts.
+* **Extended levels are data:** ±3 / ±4 = 1.5× / 2× the ±2 EV offset, per knot and column. Knot range then 70–8724
+  (stock 175–5604): the register width above 5604 is unknown (the +0x108 path already caps at 0x1000).
+* **UI:** English strings `HARD` "(+2)HARD", "(+1)MEDIUM HARD", "(±0)STANDARD",
+  "(−1)MEDIUM SOFT", "(−2)SOFT" (glyphs e128 "(", e129 ")", e12b "+", e12d "−", e120 "±", e130–e132 "0–2");
+  each ×3 (probably Sharpness, Highlight, Shadow). Relabelling = uiname-style descriptor repoint, H/S descriptors only.
+* **Routes:** (1) remap in place: rewrite the 175 entries so the 5 menu slots mean e.g. −4/−2/0/+2/+4. No DB or code
+  change; live via POKE to blob1 RAM, SD card via a stage-B memcpy, flash via blob1 re-encode. Affects every film
+  simulation (the stage is shared), EXIF still says ±1/±2. (2) + relabel menu text. (3) true 9-level menu: menu item
+  count, setting bounds, EXIF 0x1040/0x1041, and either 9×9×4 curves (table relocation) or a hook that computes the
+  curve from std × ratio^k. The menu/setting code is not mapped yet.
+
+## Session 2026-11-12: ROM dump card (`romdump/`) — built, emulator-checked, not yet booted
+* blob2 is **not** in RAM at stage B: the loader (0x468c) loads only sections 0, 1 and blob1 (0x4b94). blob1 loads
+  blob2 later (0x863c1c: section 5 via 0x7ebdac(5), called from 0x970c7c) and starts it through 0x972518 →
+  `bl 0x854e48` at **0x972520** (0x854e48: section 5 entry via [entry+4]+0xc). The two callers 0x973d44 / 0x973dc0
+  first require five ready checks to return 1.
+* `romdump/build_dumpcard.py`: tested power-on card (crumbs.patch, = ffboot e7af6d5a…) + `extra` installer: stage B
+  redirects 0x972520 → DUMP_HOOK (loader 0xb020), which sets blob2 handler slot 0xf4c0dc (opcode 0x9010, stock
+  0xf4bff0) to a PEEK handler at 0xb080 (build_ptpdebug.handlers(base=…, ops=('peek',))) and writes status 1 / 2
+  to 0xb01c; ID 'XPRO1 ROMDUMP' + version at 0xb000. No POKE / CALL; blob2 code untouched. ffboot 79118fee…,
+  ffsys 7661dadc…. `crumbs.patch(extra=None)` and `handlers()` defaults reproduce earlier outputs byte for byte
+  (e7af6d5a…, 8436762b…).
+* Checks: `emu_crumbs.py` ALL OK on the card; `re/tools/emu_dumpcard.py` ALL OK (stage B, real 0x972518 with
+  registers identical to a stock run, one blob2 word changed, real PTP dispatcher: PEEK / clamp / no session /
+  0x9011-0x9012 generic, slot-in-use and other-firmware cases). `romdump/romdump.py` tested against a fake camera.
+* Camera test: battery out/in, Fn + dial press, USB → `romdump.py info` → "ROM dump card v1 is running"; `rom` →
+  sha256 7dc7e332….
+
+## Session 2026-11-12 (night): Classic Chrome as its own film simulation (Strategy B), first mapping
+Goal: keep PRO Neg. Hi stock and add Classic Chrome as an 11th menu item. Static work plus USB reads (camera on
+`ptpdebug_385`, flash v2).
+* **Free slot: MODE_FSIM 6 "CHROME"** (hidden on the X-Pro1, no menu item). fsim → colour mode table blob2 0xf396b0
+  (`FUN_00f38780`, fsim 1..12) = [5,0,4,2,3,**1**,2,2,2,2,6,7]: fsim 6 → **colour mode 1** (the unused "CHROME" mode).
+  Using 6 instead of a new 13 avoids every `≤ 12` bound: backup property → fsim `blob1 0x9bad40` (identity table
+  0x9bd8d0, `cmp #0xc`), develop converter `FUN_010d1b54` (0..12, else error 0x84), `FUN_00f38780` (`< 0xc` after −1).
+* **Colour mode 1 has no data of its own:** every lookup maps it to PROVIA's index 0: 3×3 `FUN_00f32fcc` (two cm→i
+  if-chains), 2×2 `FUN_00f2d404` (sRGB switch + alt switch), chroma gain `FUN_00f2c8fc`, detail `FUN_00f2c044`
+  (byte tables only for cm 2..7), tone (`0xf34362[cm]`, cm 2..7 only). So the pipeline needs code changes: cm 1 → a
+  new index with CC's presets. In the ID tables that have the special-mode switch (recctl +0xa8, indices 7..0x28),
+  **index 0x10 is never produced** (candidate slot); the alt tables still need checking.
+* **Settings data path (shooting):** fsim = settings struct +0x1570 (array of 0x60 × 0x4dfc at `[0x125d7b4]`,
+  `FUN_01067d70`), loaded by `FUN_010181c0` from 0x1276df4 +0x1008, which `FUN_01098ed0` fills from the backup property
+  (+0x9c via blob1 0x992d80). Property store blob1 RAM **0xa81240** + bank·0x2130 + idx·0xa8 + 0x164 (setter
+  0x992d98, its only caller 0x9897ec). Shooting recctl fill `0xf39014` (fsim from param +0x1c → 0xf38a00); RAW
+  conversion path `FUN_010c027c` (develop struct 0x13a0974, fsim at +0x4c).
+* **USB mode unloads the shooting state:** `[0x125d7b4]` = 0, 0x1276df4 and the property store 0xa81240 read all
+  zero over USB (PEEK verified on live PTP globals 0x11f3bb0). ⇒ fsim 6 can't be tried by a USB POKE; the settings are
+  rebuilt from the backup when the cable comes out. Testing needs code (SD card hook) or a working menu item.
+* **Menu text:** each language block also holds UI lists as 8-byte pairs {text descriptor, u16 width, u16 lines}
+  (English block: 0x2560–0x5a40+). Film-sim list (English 0x39a0–0x3a3c): per item an icon-only entry and an
+  icon+name entry, icons are **font glyphs**: U+F06A PROVIA, F06B Velvia, F06C ASTIA, F201 Neg Hi, F202 Neg Std,
+  F06D MONO, F1B4 Ye, F1B3 R, F1B5 G, F06E SEPIA. Offsets differ per language and nothing in blob1/blob2 points at
+  them, so lists are found through a per-block index that is not decoded yet.
+* **X-E2 reference (debug name pool in its blob1):** a 14th film sim touches ~9 menu tables
+  (`UI_MENU_TBLID_UIMENUCOM_RECMENU_FSIM_TBL`, `QUICKMENU_FSIM_TBL`, `RECMENU_FSIM{1,2,3}_BKT_VAL_TBL`,
+  `C_SAVE_PARAM_FSIM_TBL`, `PLAY_RAWDEV_FSIM_TBL`, `FUNCTION_FSIM_TBL`, `DSP_CUSTOM_EVFLCD_FSIM_TBL`), per-list text
+  (`REC_SIM_C_CROME*`, `REC_CUS_FSIM_C_CROME`, `CONT_FILMSIM_BKT_C_CROME*`, `PB_RAW_FSIM_C_CROME*`) and four icon sets
+  (`ICO_FILM_*`, `ICO_INFO_FILM_*`, `ICO_QUICK_MENU_FILM_*`, `ICO_FILM_*_OL`). The X-E2 also has icons for the hidden
+  CHROME sim (`ICO_FILM_CHROME`, `ICO_QUICK_MENU_FILM_CHROME`, `ICO_FILM_CHROME_OL`). Name tables: X-E2 blob1
+  0x8d667c (menu table IDs, 366), 0x8dd550… (text IDs), 0x8edd98… (icons). X-E2 blob2 0x13a4090 (381 words) holds
+  per-table function pointers (layout not decoded).
+* EXIF FilmMode for fsim 6 is 0x000 (PROVIA) today; needs 0x600.
+
+## Session 2026-11-12 (late night): film-sim menu data mapped (Strategy B, part 2)
+X-Pro1 blob1 now decompiled too: `decompiled/xpro1_blob1_0x774000.c.gz` (Ghidra 12.1.4 + JDK 21 in ~/opt, 2.5 min).
+* **UI text IDs** (`tools/uitext.py`): each language block holds one ID-indexed table of 1693 × {u32 layout, u32
+  descriptor}; IDs are language-independent (English table at block offset 0x255c, Japanese 0x923c). Film-sim lists,
+  all in menu order: 640–667 (FILM SIMULATION BKT / shooting-menu list: icon, icon+name per sim), 800–832 (icon
+  small/big/name; mono has an extra "B&W" 819), 1057–1067 (icon only), 1196–1216 (icon, name). Nothing in code,
+  UI DB or data tables maps a film-sim value to these IDs (searched every order, stride and offset): each screen's
+  strings are consecutive in menu order, so the screens draw "item k" from their own group. **Adding an 11th item
+  needs the screen resources, not only a table** — the open problem.
+* **X-E2 comparison:** its debug name chain (blob1 0x8dc3d8, cmp/ldreq) gives 3448 text names, e.g. REC_SIM_STD..SEP
+  1000–1009, REC_SIM_C_CROME 157 (CC strings inserted at 157–164). Its shooting-menu item table blob1 0xaa4204
+  (11 × 0x20: 4 text IDs, 0, 0xff0004xx, X_REC_D_MENU text, text) is referenced from menu nodes
+  {group, 0x198, 4, 0, link, values 0xaa9dc4, items 0xaa4204}. The X-Pro1 has no such item table.
+* **X-Pro1 settings/menu model (blob1 data 0x774000–0x77c000):** nodes of 6 words {group, property, 7, 0, link,
+  values}; value lists are (u32 value, 0) pairs ending 0x7ffffffe. Film-sim nodes (values = menu rows
+  [0,1,2,8,7,6,4,3,5,9], 6 lists like the X-E2's six): 0x779ffc {0x3c, **0x3d**} and 0x77a544 {0x1, 0x3d} (main film
+  sim), 0x775e94 / 0x779fe4 / 0x778244 {0x3e, 0x3f/0x40/0x41} (FS bracketing 1–3, list 0x776540), 0x779d4c {0x2b, 0x9a},
+  0x778d9c {0x2e, 0x152} (order [0,1,2,8,7,3,5,4,6,9]).
+* **Conversion engine** blob1 `0x78a9ec(table = property, value, from, to)` (0 = row index, 1–3 = columns c0–c2),
+  tables via pointer array 0x78ba10[property], rows of 3 u32 ending {ffff, ffff, ffff}, 0x7ffffffe = none.
+  Film sim (0x3d → 0x78f168; 0x3f/0x40/0x41 → 0x78f804/0x78d680/0x78c7b0, identical): row = menu row (0 PROVIA,
+  1 Velvia, 2 ASTIA, 3 R, 4 Ye, 5 G, 6 MONO, 7 NegStd, 8 NegHi, 9 SEPIA), c0 = stored property value (0 P, 1 A, 2 V,
+  3 R, 4 Ye, 5 G, 6 MONO, 7 SEPIA, 11 NS, 12 NH), c2 = MODE_FSIM. **Row 10 exists and is empty (all 0x7ffffffe):**
+  natural slot for {c0 13, -, fsim 6}. Users: 0x786524 (property → fsim, c0→c2), 0x79c348 (menu row → c0 → set),
+  custom-setting load blob2 0xf13e68.
+* **Property storage:** `0x78fb50` get / `0x793814` set; 0x3d = high nibble of 0x9cafef + bank·0x12a + mode·7
+  (mode 7 stored elsewhere), so values 0–15; c0 13 fits.
+* Camera dropped off USB during the session (auto power-off); DRAM search for the run-time text-table pointer pending.
+
+## Session 2026-11-12/13: live 11th-row experiment (`tools/fsimslot.py`) — applied in RAM, result pending
+* Full DRAM dump: 0x40000000 + a mirrors low address a; no pointer to the text table exists while the camera is in USB
+  mode (the two 0x4f255c words at 0x12af5b4 / module 0x41 0x1487a58 are an unrelated constant; other languages' bases
+  appear nowhere). No code builds 0x4f0000 except the loader, so how the UI reaches the table stays unknown.
+* The settings data (blob1 0x774000–0x77c000, 0x78a000–0x790000) is identical in RAM and file and can be poked live;
+  the UI property store is readable in USB mode (film sim = 0x9cafef + 7·mode, high nibble; mode byte 0x9d1b64).
+* `fsimslot.py apply` (done, flash v2 + debug firmware running): table 0x78f168 row 10 := {13, -, 6}; nodes 0x779ffc
+  and 0x77a544 → new list [0,1,2,8,7,6,4,3,5,9,10] at 0xb800 (loader filler). Bracketing nodes and tables 0x3f–0x41
+  untouched. **Question:** does the FILM SIMULATION menu show an 11th row, what does it draw, and does selecting it
+  store 13 (read back with `fsimslot.py status`)? fsim 6 → colour mode 1 = PROVIA rendering for now.
+* ✅ **Camera (user, 2026-11-13): FILM SIMULATION shows an 11th, blank row** after `fsimslot.py apply` ⇒ the menu
+  builds its rows from the node's value list; the cursor row comes from the same table (blob2 `FUN_00f1e248` case
+  0x3d: fsim → row). Not yet selected (stored value still 5).
+* Menu engine (blob2): current node `[0x9d1254]`, per-row state array 0x9d1404 (1/2 = disabled/hidden),
+  `FUN_00f0eb98` counts rows (≤ 0xaa) up to the 0x7ffffffe pair.
+* Text ID 0 is an empty string (descriptor with a null string pointer). Test running: `tools/uitextmark.py apply
+  0 668 669 833 834 1068 1217 1218` gives those IDs visible labels "#ID" in RAM, to see which ID the blank row draws.
+* (2026-11-13) User: with the markers on, DYNAMIC RANGE in the shooting menu read "#833" ⇒ **the shooting menu draws
+  the 800 text group**. The 11th row was gone by then: a power cycle reloads blob1 (fsimslot changes lost) but not
+  the language block. Markers removed (`uitextmark.py restore`). Free preset slots counted: 3×3 17–30, 2×2 12–30.
+  **Summary of the whole "new film sim" work: `FINDINGS.md`.**
+* (2026-11-13) Second camera round: 11th row present and blank even with a label on text ID 0 ⇒ nothing is drawn.
+  **Cause found: menu screens are code in module 0x41** (screen table 0x1430190, text draw 0x1433480, id < 0x69f);
+  row → text tables there (0x1483c20, 0x142ac5c, 0x14838f4 + eight icon tables) have 10 entries and the draw code
+  skips rows > 9. Details and table list: `FINDINGS.md` §6. Camera restored to stock (`fsimslot.py restore`).
+* (2026-11-13) Live code test applied (`fsimslot.py apply`, extended): module 0x41 name table 0x1483c20[10] := 819
+  ("B&W", test label) and row limit 0x147c748 `cmp r4,#9` → `#10`; I-cache invalidated by CALL blob1 0x8a5d70
+  (`mov r0,#0; mcr p15,0,r0,c7,c5,0; bx lr`) after pushing the D-cache line out with a 2 MB read. The CALL returned
+  and the camera still answers. Result pending: does row 11 read "B&W", can it be selected, stored value 13, photo.
+* ✅ (2026-11-13, user + USB read) Row 11 reads "B&W", is selectable, pictures look standard; active MODE_FSIM
+  global 0x9cb890 = 6. The 0x9cafef nibble still read 5 (not the active copy). `FINDINGS.md` §4.
+* (2026-11-13) Shortcut for a live look test: fsim → colour-mode table blob2 0xf396b0[5] (fsim 6) poked 1 → 7, so
+  the new row uses PRO Neg. Hi's colour mode, which holds the X-E2 Classic Chrome data in the flashed v2 (2x2 live =
+  v2 values). In `fsimslot.py apply`. Final design still needs CC in its own presets (17/18, 12, curve slot) and
+  PRO Neg. Hi restored to stock.
+* (2026-11-13) Menu look from the X-E2: its Classic Chrome entry is the string U+F2B9 + "CLASSIC CHROME" (icon glyph
+  **U+F2B9**). Fonts: both cameras use an "FDL Font" file with identical headers; X-Pro1 0x81134 bytes (file
+  0x154025c, RAM 0x510000 = file, verified live), X-E2 0x84294 bytes (file 0x166025c), different from byte 0x3a on.
+  X-Pro1 font partition = 0xa0000 (load table: flash 0x1540000) and RAM after the font is zero, so the X-E2 font fits
+  as a whole. Unknown: whether it is a superset (same code points for every glyph the X-Pro1 UI uses).
+  Live: text 819 (unused "B&W", the test row's name) → "CLASSIC CHROME" via `uitextmark.py apply 819=...`.
+* (2026-11-13) `tools/fontswap.py xe2`: X-E2 font written over the X-Pro1 font in RAM (only 10838 words differ;
+  6 s, verified; the camera kept answering). Text 819 := U+F2B9 + "CLASSIC CHROME". Result pending: does the row show
+  the Classic Chrome icon, and do all other menu icons/text still look right with the X-E2 font?
+* (2026-11-13) Camera: with the X-E2 font, the row reads "<CC icon> CLASSIC CHROME" (U+F2B9 renders), but the
+  right-hand value icon of the menu is missing. Menu items are module-0x41 records {item, text, gfx, flag, A, B}
+  (e.g. 0x14299ec item 11 and 0x142bd88 item 8 = FILM SIMULATION, both A = 0x142aa4c (803 icons),
+  B = 0x1427320 (802 small icons), 10 entries each, menu order, packed: entry 10 = next table).
+  Test applied after a power cycle: `fsimslot.py apply` now also copies A/B with an 11th entry = text 1215 to
+  0xb900 / 0xb940 and repoints the 4 record fields (0x14299fc, 0x142bd98, 0x1429a00, 0x142bd9c);
+  `fontswap.py xe2`; `uitextmark.py apply 819='CLASSIC CHROME' 1215=U+F2B9` (1215 = unused SEPIA-icon copy in the
+  1197 group: table 0x142e558 uses 830 instead; no code immediate or module word references it).
+* ✅ (2026-11-13, user) **The 11th row shows the X-E2 Classic Chrome icon and the name CLASSIC CHROME.** Menu entry
+  complete in RAM (name, icon, selectable, selects fsim 6 → colour mode 7 = CC data of v2). `FINDINGS.md` §4, §6.
+
+## Session 2026-11-13: SD card with Classic Chrome as its own menu entry (`build/sdchain_cc11_green/`)
+* **Font: no change needed.** The X-E2 Classic Chrome icon U+F2B9 is already in the X-Pro1 font, byte-identical
+  (unused there). Font index: per code point an entry at 0x38050 + 4·(c − 0xE000) (u32, offset = value >> 8, glyph
+  = gap to the next entry); fits all 304 PUA characters the X-Pro1 UI uses. The X-E2 font adds 46 glyphs
+  U+F2D1–U+F2FE (0x3161 bytes at 0x7aa92) and is otherwise identical.
+* Load points: blob1 data at stage B; module 0x41 is streamed in later by blob1 0x9715e4, whose init loop calls
+  each module's init list with `blx r3` at **0x9717b8** (module 0x41 list = [0x1430170, 0] at the module base; the
+  module table entry's base field doubles as the load address, so it can't be repointed). blob2 at its start call
+  0x972520. Fonts: blob1 0x863718 (section 3). Language block: cchook's hook (0x863388).
+* `tools/fsim11.py` (extra installer, table-driven stage B because the inline marker block is full),
+  `cchook.install(lang=...)` / `crumbs.patch(cc_lang=...)`, `build_sdchain.py --fsim11`. Defaults unchanged:
+  `--crumbs --uiswap --cc` still gives 8436762b….
+* Card `build/sdchain_cc11_green/` ffboot **140622c0…**, ffsys 7661dadc…: `emu_fsim11.py` ALL OK, `emu_crumbs.py` ALL OK.
+  Camera test pending.
+* (2026-11-13) Camera (card 140622c0…, photos samples/menu.jpg + menu1.jpg): FILM SIMULATION pop-up shows the 11th
+  entry with icon + CLASSIC CHROME, but the shooting-menu line still showed the STD badge. Cause: the menu line's
+  value index comes from module 0x41 `FUN_0146ef68` case 8 = byte table **0x1474e7c[MODE_FSIM]** (menu row per film
+  sim; identical copy 0x1474e3c used by `FUN_0146fcec` case 0) where fsim 6 → 0 (PROVIA's row). Fix: entry 6 := 10
+  (word 0x1474e80 / 0x1474e40: 0x05000905 → 0x050a0905). Applied live (`fsimslot.py apply`, flash-booted camera) and
+  on the card: `build/sdchain_cc11_green/` ffboot **1923db4f…**, emu_fsim11 ALL OK (20), emu_crumbs ALL OK.
+* ✅ (2026-11-13, user) Row-map fix confirmed live: the shooting-menu FILM SIMULATION line shows the Classic Chrome
+  icon. Card updated to ffboot 1923db4f… (verified after remount). README / FINDINGS / TODO updated.
+
+## Session 2026-11-13: Classic Chrome's own look data, PRO Neg. Hi restored (`tools/cclook.py`)
+* Colour mode 1 (MODE_FSIM 6) already inherits PROVIA's detail (`FUN_00f2c044`: byte table only for cm 2–7),
+  chroma-gain preset (`FUN_00f2c8fc` chain → index 0 → 0xe4e8 = 1) and H/S family (`FUN_00f32c08` default) — all
+  equal to what the X-E2 gives Classic Chrome. Only the 3x3, the 2x2 and the tone family fall back to PROVIA.
+* **Selector tables indexed by film-sim index i**: the sRGB tables have an unused index 7 holding PROVIA's values
+  (3x3: 0xdd26 / 0xdd8e / 0xdd5e for +0x104 = 0 / 4,8 / other; 2x2: 0xe4a0; `FUN_00f30b10`'s 2x2-by-mode rows
+  0x100fa + 0x30·row, index 7 = 0x10101…). The alt tables (+0xc8 ≠ 0) have 7 entries: 0xf34300 / 0xf34248 / 0xf2dea8
+  are followed by a 2-byte padding word (now the 8th ID), 0xf34064's 8th slot is the tone byte table (relocated via
+  its movweq/movteq at 0xf33474), 0xf31718 (4 rows × 7 u32) is relocated with row stride 8 (`rsb r5,r5,r5,lsl#3` at
+  0xf30e18 → `lsl r5,r5,#3`; r5 is dead afterwards).
+* **cm → index chains** end in a fallback instruction for cm 0/1/8/9: `movne r2,#0` 0xf333c4 (3x3 sRGB), `movne r1,#0`
+  0xf3344c (3x3 alt), `mov r3,#0` 0xf2d724 / 0xf2d7a8 (2x2), `movne r2,#0` 0xf30d7c / 0xf30e0c. Each becomes
+  `bl(ne)` to a 4-instruction stub returning 7 for cm 1, else 0 (flags of the chain kept by using `blne`).
+* **Tone families**: 7 families (0 PROVIA; byte tables 0xf34364 + (cm−2), 0xf3443c…, 0xf34074… give 1–6 for cm 2–7).
+  No spare family: the byte 0xf34363 before the table is the last ID of Neg Std's curve table, so "index cm−1" would
+  corrupt it. Instead the range-check fallback `movhi r2,#0` (0xf32218) / `movhi r3,#0xf9` (0xf32360, 0xf32570)
+  becomes a `bl` to a stub giving family 5 / code 0xff for cm 1 (r3 = cm−2 = −1), flags restored with `cmp r3,#5`.
+  SEPIA (cm 3) donates family 5 / 0xff: its curve IDs are all PROVIA's (0), so its byte-table entries become 0 / 0xf9
+  with no visible change; family 5's 40 IDs := 38 (0xdf92, 0xdf99, 0xdfa0, 0xdfae, 0xde37–0xde48, 0xdeb5–0xdec6).
+  The two '+7' entries (0xdfa7, 0xdfb5) stay 16: in that mode every film simulation uses curve 16 (v2 kept them too).
+* Curve lookup blob1 0x8056a8: a curve number not in the table falls back to entry 0 (curve 0), so on a stock-flash
+  camera (no curve 38) the tone patches are skipped by HOOK_B2's guard and sepia would still render with curve 0.
+* Data (tuning area, via the existing tuning hooks, now 99 u16 entries): the 76 v2 bytes back to stock, v2's 3x3
+  matrices → presets 17 (sRGB) / 18 (alt), v3 2x2 → preset 12, selectors (0xdd26/0xdd8e/0xdd5e := 17, 0xe4a0 and
+  0x10101+0x30·r := 12, free bytes 0xe409 := 18 / 0xe40b := 12 for the alt tables), curve IDs. 161 bytes in all.
+* **Live (camera, flash-booted v2 + debug): `cclook.py apply`** poked everything (20 blob2 words + stubs/tables in the
+  loader filler 0xbc00–0xbd00, I-cache invalidated); `restore` brought the area back to v2 exactly; re-applied with
+  the final plan. `fsimslot.py apply --own` keeps fsim 6 on colour mode 1. Photos not yet taken.
+* Card: `build/sdchain_cc11own_green/` (`--crumbs --uiswap --cc --fsim11 --cclook`), ffboot **2edd070e…**: HOOK_B2 is
+  now table-driven ({addr, old, new, flag}; flag 1 = needs curve 38 in blob1's table), `cchook.install(db_params=)`,
+  `crumbs.patch(cc_db=)`, `build_sdchain.py --cclook [--flash FILE]`. `tools/emu_cclook.py` ALL OK: tuning hook →
+  planned image exactly (and only stock-matching entries on a 3.82 area), HOOK_B2 with/without curve 38, real
+  `FUN_00f32fcc` / `FUN_00f2d404` / `FUN_00f30b10` / `FUN_00f2c8fc` / `FUN_00f321f0` / `FUN_00f3232c`: colour mode 1 =
+  what v2's PRO Neg. Hi produced (all sRGB/alt/mode variants, curve 38), PRO Neg. Hi = stock, PROVIA/SEPIA/MONO
+  unchanged. `--cc` alone still reproduces 8436762b…; the borrow card (`--fsim11`) is now 7d62033a… (table hook).

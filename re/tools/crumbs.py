@@ -61,7 +61,12 @@ BOOTINFO, KEYS_SEEN, KEYS_P0_SET, KEYS_P2_SET = 0x400a0000, 0x2f0, 0xc00, 0x800
 UI_DB, UI_DB_LEN, UI_TAG, UISWAP = 0x130000, 0x215a54, 0x1b00, 0xa000
 
 
-def patch(L, S0, uiswap=False, cc_img=None):
+def patch(L, S0, uiswap=False, cc_img=None, extra=None, cc_lang=None, cc_db=None):
+    """extra: optional installer extra(L, asm, bl) -> ([(blob1 address, old word, new word)], info) that writes its own
+    code into the free filler and returns blob1 patches for stage B (old word checked there). Used by
+    romdump/build_dumpcard.py. The installer may instead return (address, info): a routine called at stage B (after
+    the UI swap, before the markers) that applies its own table of patches (fsim11.py). With extra=None the output is
+    unchanged."""
     ks = Ks(KS_ARCH_ARM, KS_MODE_ARM)
     asm = lambda src, at: bytes(ks.asm(src, at)[0])
     imm = lambda r, v: f'movw {r}, #{v & 0xffff}\n    movt {r}, #{v >> 16}'
@@ -199,7 +204,12 @@ beat:
     markers = list(MARKER); cc_info = None
     if cc_img is not None:                             # Classic Chrome v3 values + menu name: run-time hooks (cchook.py)
         import cchook
-        extra, cc_info = cchook.install(L, cc_img, asm, bl); markers += extra
+        more, cc_info = cchook.install(L, cc_img, asm, bl, lang=cc_lang, db_params=cc_db); markers += more
+    extra_info = None; extra_call = None
+    if extra is not None:
+        more, extra_info = extra(L, asm, bl)
+        if isinstance(more, int): extra_call = more     # installer applies its own patches: call it at stage B
+        else: markers += more
     marker = ''.join(f'''
     {imm('r1', a)}
     ldr r2, [r1]
@@ -246,6 +256,7 @@ sw_next:
     mov r1, #{BIT[0x20]}
     bl {REC:#x}
     {f'bl {UISWAP:#x}' if uiswap else ''}
+    {f'bl {extra_call:#x}' if extra_call else ''}
     {restore}
     {marker}
     dsb
@@ -296,4 +307,5 @@ sw_next:
     mov pc, r3''', PRE)
     put(PRE, pre, REC)
     L[0x405c:0x4060] = asm(f'b {PRE:#x}', 0x405c)
-    return {'pre': PRE, 'rec': REC, 'traps': trap_at, 'stage_b': STAGE_B, 'tramps': TRAMPS, 'uiswap': uiswap, 'cc': cc_info}
+    return {'pre': PRE, 'rec': REC, 'traps': trap_at, 'stage_b': STAGE_B, 'tramps': TRAMPS, 'uiswap': uiswap, 'cc': cc_info,
+            'extra': extra_info}
