@@ -201,13 +201,38 @@ stubs (loader filler) that answer **index 7** (matrices) or **family 5 / code 0x
   now produces exactly what v2's PRO Neg. Hi produced; PRO Neg. Hi produces what stock does; PROVIA, SEPIA, MONO
   unchanged. Applied live on the camera (flash-booted v2) and on the card `build/sdchain_cc11own_green/`.
 
+## 6d. RAW CONVERSION menu (2026-11-15, `tools/fsim11.py` rawconv; emulator-proven, camera test pending)
+
+The RAW CONVERSION screen is its own setting (0x152, node 0x778d9c, list 0x779cf4 rows [0,1,2,8,7,3,5,4,6,9],
+conversion table 0x78adc8 via pointer 0x78bf58, no spare row). It does **not** store a MODE_FSIM: the choice is
+kept in the RAW-convert block 0x9d4d28 as a **film code** at +8 (0 PROVIA, 3 ASTIA, 5 Velvia, 6 Neg Std, 7 Neg
+Hi) and a COLOR code at +0x1c (6–10 = mono / sepia). Blob2 `FUN_00f10e58` (0xf10ee0–0xf11048) stores row → codes,
+`FUN_00f1e248` (0xf1f8f8–0xf1f964) shows codes → row; module 0x41 draws the row name from table 0x14838f4 (cap
+`cmp r4,#9` at 0x147c61c) and the icon from 0x142e558.
+
+**Who turns the film code into the film simulation** could not be found by reading (no table, no direct
+reference). Three runs of a RAM-only call logger (`tools/fsimlog.py`, 10 hooks, conversions PROVIA → Velvia and
+PROVIA → ASTIA) traced the value backwards: tuning context (`FUN_00f38a00`, r1 = 3 / 1) ← job parameters ←
+engine +0x1570 ← request word [2] of blob2 `FUN_0107b948` (mode 0xf job) ← **module 0x44 `FUN_016326a4`**, whose
+`switch(block[2])` at 0x163289c is the mapping (3→1, 5→3, 6→11, 7→12, default 0) — the X-E2 stores film code **8**
+for Classic Chrome, so the X-Pro1 gets the same code.
+
+Card `build/sdchain_cc11rc_green/` (ffboot 6693177b…) adds, all in RAM: row 10 → code 8 in a copied list and
+table (stage B); a row-10 case in the apply chain and a code-8 case in the cursor chain (two blob2 `b`/`bne`
+words → stubs, HOOK_B2 table); an 11th entry in the screen's name and icon tables with the cap raised (four
+module 0x41 words, HOOK_INIT table); and `case 8 → film simulation 6` in module 0x44 (its default branch →
+stub; a second HOOK_INIT table applied when module 0x44's first init 0x15c05ec is about to run).
+`emu_fsim11.py` runs the real conversion engine, both blob2 chains, the module 0x44 switch (codes 0/3/5/6/7/8/9)
+and checks the module 0x41 words: ALL OK (27 checks); `emu_cclook.py`, `emu_crumbs.py` ALL OK.
+
 ## 7. Still to do
 
 1. Camera check of the own look (§6c): photos CLASSIC CHROME vs PRO Neg. Hi vs PROVIA vs SEPIA, same scene;
    CLASSIC CHROME should match what PRO Neg. Hi gave on v2, PRO Neg. Hi should be Fuji's original again.
 2. Check a photo's EXIF (Ver3.89, film mode).
-3. Other places a film sim appears: Q menu, film-simulation bracketing (nodes/tables 0x3f–0x41), RAW conversion
-   (0x152?), custom settings (0x9a?), shooting-screen indicator (1058 group), EXIF FilmMode for MODE_FSIM 6 (0x600).
+3. Other places a film sim appears: Q menu, film-simulation bracketing (nodes/tables 0x3f–0x41), custom settings
+   (0x9a?), shooting-screen indicator (1058 group), EXIF FilmMode for MODE_FSIM 6 (0x600). RAW conversion: §6d,
+   camera test of `sdchain_cc11rc_green` pending (row visible? conversion = Classic Chrome?).
 4. What a flash boot does with saved value 13 (and where the active setting copy is stored).
 5. Flash only when complete; until then the SD card.
 

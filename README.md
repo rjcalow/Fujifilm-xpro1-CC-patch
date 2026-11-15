@@ -28,6 +28,8 @@ This repository holds three things:
 | SD card with Classic Chrome v3 + green UI (`--crumbs --uiswap --cc`) | **Working for colour** (2026-11-12): an in-camera RAW conversion from the SD-booted firmware matches the v3 values. Menu name and green accent after SD boot: emulator-checked, not yet confirmed on the camera |
 | SD card: Classic Chrome as an **11th FILM SIMULATION entry** (`--crumbs --uiswap --cc --fsim11`) | **Working** (2026-11-13): entry with the X-E2 icon + CLASSIC CHROME below SEPIA, selectable, shown on the shooting-menu line; Classic Chrome look. Not yet in Q menu, bracketing, RAW conversion, EXIF. Details: [`re/FINDINGS.md`](re/FINDINGS.md) |
 | SD card: the new entry with **its own look data, PRO Neg. Hi back to stock** (`… --fsim11 --cclook`) | **Built and emulator-proven** (2026-11-13, `re/build/sdchain_cc11own_green/`): colour mode 1 renders from its own presets and tone family, PRO Neg. Hi is Fujifilm's original again. Applied live on the camera; photo comparison pending |
+| SD card: CLASSIC CHROME also in the **RAW CONVERSION menu** (`… --fsim11 --cclook --rawconv`) | **Built and emulator-proven** (2026-11-15, `re/build/sdchain_cc11rc_green/`): the code that turns the RAW-conversion menu's film code into the developer's film simulation was found live (module 0x44) and given a Classic Chrome case; menu row, name, icon and both blob2 chains added. Written to the test card; camera test pending |
+| **ACROS** as a 12th film simulation | **Roadmap.** The recipe for a further film simulation is in [`re/ADDING_FILM_SIMS.md`](re/ADDING_FILM_SIMS.md) (free numbers, tables to extend, look data, RAW conversion); ACROS would start from MONO's colour mode and tone family with its own curve |
 | USB debug firmware (label 3.85) | Flashed and working: memory peek / poke / call over USB (PTP) |
 | ROM dump card (`romdump/`) | **Working** (2026-11-12): SD dual boot + read-only USB PEEK; boot ROM dumped (sha256 7dc7e332…) without flashing |
 | Live tuning over USB | Working: parameter changes take effect on the next shot or in-camera RAW conversion |
@@ -105,7 +107,11 @@ the menu text on every language load. The icon is already in the X-Pro1's font, 
   stock. That takes 20 patched words in the image pipeline's selection code (each a fallback instruction turned
   into a call to a 4-instruction stub) and 161 tuning bytes; `re/tools/emu_cclook.py` runs the real selection
   functions for every colour mode and variant. Build: `re/build/sdchain_cc11own_green/` (README there).
-* Not covered yet: Q menu, film-simulation bracketing, RAW conversion, shooting-screen indicator, EXIF film mode.
+* **With `--rawconv` as well**, CLASSIC CHROME is also the 11th row of RAW CONVERSION > FILM SIMULATION and the
+  conversion develops with it: the RAW-conversion screen stores a "film code", and the code that maps it to a film
+  simulation (module 0x44) was found with a RAM-only call logger (`re/tools/fsimlog.py`) and given a case for the
+  X-E2's code 8. Build: `re/build/sdchain_cc11rc_green/` (README there); emulator-proven, camera test pending.
+* Not covered yet: Q menu, film-simulation bracketing, shooting-screen indicator, EXIF film mode.
 * Before switching on **without** the card, select a stock film simulation: the flash firmware has no menu row for
   the new value.
 

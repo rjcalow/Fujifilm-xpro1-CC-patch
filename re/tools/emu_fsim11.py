@@ -70,8 +70,9 @@ tab = L.find(struct.pack('<3I', F.ROW10, F.END, 13)); marks = []
 while W32(L, tab): marks.append(struct.unpack('<3I', L[tab:tab + 12])); tab += 12
 want = sorted([0x857a98, H.SITE_LANG] + [x for x, _ in H.DB_SITES] + [a for a, _, _ in marks])
 check('stage B changed exactly: Ver3.89 marker + cchook sites + fsim11 table', diff == want, str([hex(x) for x in diff]))
+RC = len(marks) == 8                                                   # --rawconv: two more markers (list, table pointer)
 check('fsim11 table applied (every entry holds its new word)', all(W32(now, a - 0x774000) == new for a, _, new in marks)
-      and len(marks) == 6)
+      and len(marks) in (6, 8))
 LIST = marks[2][2]
 lst = [W32(L, LIST + 4 * i) for i in range(24)]
 check('new menu list = stock rows + row 10', lst == sum(([r, 0] for r in F.STOCK_ROWS + [10, F.END]), []))
@@ -133,7 +134,8 @@ check('module hook: reaches the module init with lr = 0x9717bc, r0-r5 and sp kep
       r[0] == 'ok' and r[1] == regs and r[2] and r[3] == F.SITE_INIT + 4, str(r[:1] + r[3:]))
 icon = {k: W32(L, (F.MOD41[2][2] if False else 0) + 0) for k in ()}
 want = {a: new for a, _, new in F.MOD41 if not isinstance(new, str)}
-check('module hook: exactly the eight module words changed', ch == sorted(a for a, _, _ in F.MOD41), str([hex(x) for x in ch]))
+mod41 = [a for a, _, _ in F.MOD41] + ([F.RC_CAP, F.RC_MOVW, F.RC_MOVT, F.RC_ICON_FIELD] if RC else [])
+check(f'module hook: exactly the {len(mod41)} module words changed', ch == sorted(mod41), str([hex(x) for x in ch]))
 check('module hook: name entry 819, row limit cmp r4,#10, fsim 6 → row 10 in both row maps', all(W32(got, a - F.M41_BASE) == v for a, v in want.items()))
 iA, iB = W32(got, 0x14299fc - F.M41_BASE), W32(got, 0x1429a00 - F.M41_BASE)
 tA = [W32(L, iA + 4 * i) for i in range(11)]; tB = [W32(L, iB + 4 * i) for i in range(11)]
@@ -174,4 +176,60 @@ check(f'real blob2 FUN_00f38780: MODE_FSIM 6 → colour mode {1 if own else 7}, 
 mu.mem_write(F.B2_BASE, b2); mu.mem_write(ent[0][0], struct.pack('<I', 0x12345678))
 call(F.SITE_B2, regs, stop=F.START_B2, lr=0xdead0000)
 check('blob2 hook: unexpected old value → unchanged', W32(bytes(mu.mem_read(ent[0][0], 4)), 0) == 0x12345678)
+
+# ---- 6 RAW CONVERSION menu (--rawconv)
+if RC:
+    conv = lambda v, frm, to: call(0x78a9ec, [0x152, v, frm, to])[1][0]
+    check('rawconv: real conversion engine, setting 0x152: row 10 → code 8, ten stock rows unchanged',
+          conv(10, 0, 3) == 8 and [conv(r, 0, 3) for r in range(10)] == F.RC_CODES, str((conv(10, 0, 3), [conv(r, 0, 3) for r in range(10)])))
+    def run_mid(fn, regs):                      # enter a chain mid-function: the frame it pops returns to STOP
+        sp = 0x1e00000
+        mu.reg_write(UC_ARM_REG_CPSR, 0x1d3); mu.reg_write(UC_ARM_REG_SP, sp); mu.reg_write(UC_ARM_REG_LR, STOP)
+        mu.mem_write(sp, struct.pack('<8I', *([STOP] * 8)))
+        for r, v in regs.items(): mu.reg_write(r, v)
+        st['stop'] = STOP
+        try: mu.emu_start(fn, 0xffffffff, count=100_000)
+        except UcError as e: return 'error'
+        return 'ok' if mu.reg_read(UC_ARM_REG_PC) == STOP else 'no stop'
+    lst2 = W32(now, F.RC_NODE - 0x774000)
+    check('rawconv: setting 0x152 list = stock rows + row 10', [W32(L, lst2 + 4 * i) for i in range(24)] == sum(([r, 0] for r in F.RC_ROWS + [10, F.END]), []))
+    # blob2 apply chain (r6 = row) and cursor chain, after HOOK_B2 (blob2 already patched above)
+    def apply_row(row):
+        mu.mem_write(0x9d4d28, bytes(0x40))
+        r = run_mid(0xf10ee0, {UC_ARM_REG_R6: row}); blk = bytes(mu.mem_read(0x9d4d28, 0x40))
+        return r, W32(blk, 8), W32(blk, 0x1c)
+    check('rawconv: real apply chain: row 10 → film code 8 / COLOR 0; row 1 → 5; row 3 → COLOR 6; row 11 → 0/0',
+          apply_row(10) == ('ok', 8, 0) and apply_row(1) == ('ok', 5, 0) and apply_row(3) == ('ok', 0, 6) and apply_row(11) == ('ok', 0, 0),
+          str([apply_row(r) for r in (10, 1, 3, 11)]))
+    def cursor(code, colour):
+        mu.mem_write(0x9d4d28, bytes(0x40)); mu.mem_write(0x9d4d30, struct.pack('<I', code)); mu.mem_write(0x9d4d44, struct.pack('<I', colour))
+        r = run_mid(0xf1f8f8, {UC_ARM_REG_R4: 0x7777}); return r, mu.reg_read(UC_ARM_REG_R0)
+    check('rawconv: real cursor chain: code 8 → row 10; 7 → 8; 0 → 0; COLOR 10 → 9',
+          cursor(8, 0) == ('ok', 10) and cursor(7, 0) == ('ok', 8) and cursor(0, 0) == ('ok', 0) and cursor(0, 10) == ('ok', 9),
+          str([cursor(*a) for a in ((8, 0), (7, 0), (0, 0), (0, 10))]))
+    # module 0x41 words
+    nt = (W32(got, F.RC_MOVW - F.M41_BASE) & 0xfff) | ((W32(got, F.RC_MOVW - F.M41_BASE) >> 4) & 0xf000) if False else None
+    g41 = got
+    mu.mem_write(F.M41_BASE, m41); call(F.SITE_INIT, [0] * 3 + [F.MOD41_INIT, 0, 0], stop=F.MOD41_INIT); g41 = bytes(mu.mem_read(F.M41_BASE, len(m41)))
+    mw, mt = W32(g41, F.RC_MOVW - F.M41_BASE), W32(g41, F.RC_MOVT - F.M41_BASE)
+    dec = lambda w: ((w >> 4) & 0xf000) | (w & 0xfff)
+    name_tab = dec(mw) | (dec(mt) << 16); icon_tab = W32(g41, F.RC_ICON_FIELD - F.M41_BASE)
+    check('rawconv: module 0x41: row cap 10, name table (stock 10 + 819) and icon table (stock 10 + 1215) repointed',
+          W32(g41, F.RC_CAP - F.M41_BASE) == 0xe354000a
+          and [W32(L, name_tab + 4 * i) for i in range(11)] == [W32(m41, F.RC_NAME_TAB - F.M41_BASE + 4 * i) for i in range(10)] + [F.NAME_ID]
+          and [W32(L, icon_tab + 4 * i) for i in range(11)] == [W32(m41, F.RC_ICON_TAB - F.M41_BASE + 4 * i) for i in range(10)] + [F.ICON_ID])
+    # module 0x44 hook + the real request builder switch (r4 = RAW-convert block)
+    m44 = img[F.M44_FILE:F.M44_FILE + 0xe0000]
+    mu.mem_write(F.M44_BASE, m44)
+    r = call(F.SITE_INIT, [0x11, 0x22, 0x33, F.MOD44_INIT, 0x44, 0x55], stop=F.MOD44_INIT, lr=0xdead0000)
+    g44 = bytes(mu.mem_read(F.M44_BASE, len(m44)))
+    ch44 = sorted({(i & ~3) + F.M44_BASE for i in range(len(m44)) if g44[i] != m44[i]})
+    check('rawconv: module 0x44 hook: only the switch default branch changed, init reached with registers kept',
+          ch44 == [F.RC_M44] and r[0] == 'ok' and r[1] == [0x11, 0x22, 0x33, F.MOD44_INIT, 0x44, 0x55] and r[2] and r[3] == F.SITE_INIT + 4, str([hex(x) for x in ch44]))
+    def m44_switch(code):
+        mu.mem_write(0x9d4d28, bytes(0x40)); mu.mem_write(0x9d4d30, struct.pack('<I', code)); mu.mem_write(F.RC_M44_REQ, b'\xee' * 4)
+        r = call(0x163289c, [0, 0, 0, 0, 0x9d4d28, 0], stop=F.RC_M44_CONT)
+        return r[0], W32(bytes(mu.mem_read(F.RC_M44_REQ, 4)), 0)
+    check('rawconv: real module 0x44 switch: code 8 → film sim 6; 3 → 1, 5 → 3, 6 → 11, 7 → 12, 0 → 0, 9 → 0',
+          [m44_switch(c) for c in (8, 3, 5, 6, 7, 0, 9)] == [('ok', v) for v in (6, 1, 3, 11, 12, 0, 0)], str([m44_switch(c) for c in (8, 3, 9)]))
 print('\nRESULT:', 'ALL OK' if ok else 'FAILED'); sys.exit(0 if ok else 1)
