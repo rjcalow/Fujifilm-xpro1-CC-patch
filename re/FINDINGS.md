@@ -1,8 +1,9 @@
 # Adding new film simulations to the X-Pro1: findings
 
 Goal: add film simulations (Classic Chrome first) as **extra menu entries**, keeping all ten stock ones.
-State 2026-11-13. Nothing here is flashed. Camera tests were RAM-only: live over USB (debug firmware `ptpdebug_385`)
-and then from the SD-boot card `build/sdchain_cc11_green/` (§6b), which works on the camera.
+State 2026-11-15. Nothing here is flashed. Camera tests were RAM-only: live over USB (debug firmware `ptpdebug_385`)
+and then from the SD-boot cards (§6b, §6d), which work on the camera. **To add another film simulation, an AI agent
+should start at §9.**
 Addresses are RAM addresses (blob1 loads at 0x774000, blob2 at 0xe0ec80). Session detail: `NOTES.md` (2026-11-12 night onward).
 
 ## 1. Summary
@@ -17,7 +18,8 @@ Addresses are RAM addresses (blob1 loads at 0x774000, blob2 at 0xe0ec80). Sessio
 | Space for names / lists / code | **Found** (§5) |
 | Where menu rows get their name + icon | **Found**: tables + row limit in module 0x41 (§6); icon already in the X-Pro1 font |
 | Image pipeline using the new slot's own data | **Done**: 9 fallback instructions → stubs, 2 tables relocated, data in free presets (§6c) |
-| Other menus (Q menu, bracketing, RAW conversion, custom settings), EXIF | Lists located, not patched (§3, §7) |
+| RAW CONVERSION menu (playback) | **Works on the camera** (2026-11-15): CLASSIC CHROME row, converts as Classic Chrome (§6d) |
+| Other menus (Q menu, bracketing, custom settings), EXIF | Lists located, not patched (§3, §7) |
 
 ## 2. Free film-simulation slots
 
@@ -201,7 +203,7 @@ stubs (loader filler) that answer **index 7** (matrices) or **family 5 / code 0x
   now produces exactly what v2's PRO Neg. Hi produced; PRO Neg. Hi produces what stock does; PROVIA, SEPIA, MONO
   unchanged. Applied live on the camera (flash-booted v2) and on the card `build/sdchain_cc11own_green/`.
 
-## 6d. RAW CONVERSION menu (2026-11-15, `tools/fsim11.py` rawconv; emulator-proven, camera test pending)
+## 6d. RAW CONVERSION menu (2026-11-15, `tools/fsim11.py` rawconv; camera-confirmed 2026-11-15)
 
 The RAW CONVERSION screen is its own setting (0x152, node 0x778d9c, list 0x779cf4 rows [0,1,2,8,7,3,5,4,6,9],
 conversion table 0x78adc8 via pointer 0x78bf58, no spare row). It does **not** store a MODE_FSIM: the choice is
@@ -224,6 +226,8 @@ module 0x41 words, HOOK_INIT table); and `case 8 → film simulation 6` in modul
 stub; a second HOOK_INIT table applied when module 0x44's first init 0x15c05ec is about to run).
 `emu_fsim11.py` runs the real conversion engine, both blob2 chains, the module 0x44 switch (codes 0/3/5/6/7/8/9)
 and checks the module 0x41 words: ALL OK (27 checks); `emu_cclook.py`, `emu_crumbs.py` ALL OK.
+**Camera (user, 2026-11-15): CLASSIC CHROME shows in the shooting menu and in the playback RAW CONVERSION menu,
+and the conversion works.**
 
 ## 7. Still to do
 
@@ -231,8 +235,9 @@ and checks the module 0x41 words: ALL OK (27 checks); `emu_cclook.py`, `emu_crum
    CLASSIC CHROME should match what PRO Neg. Hi gave on v2, PRO Neg. Hi should be Fuji's original again.
 2. Check a photo's EXIF (Ver3.89, film mode).
 3. Other places a film sim appears: Q menu, film-simulation bracketing (nodes/tables 0x3f–0x41), custom settings
-   (0x9a?), shooting-screen indicator (1058 group), EXIF FilmMode for MODE_FSIM 6 (0x600). RAW conversion: §6d,
-   camera test of `sdchain_cc11rc_green` pending (row visible? conversion = Classic Chrome?).
+   (0x9a?), shooting-screen indicator (1058 group), EXIF FilmMode for MODE_FSIM 6 (0x600). RAW conversion: done (§6d).
+6. **Classic Chrome accuracy test** (TODO.md): the same scenes through an X-T20 / X-E2 (real Classic Chrome) and the
+   X-Pro1 card (in-camera RAW conversion, Color 0, same WB), compared per hue; decide only then whether to correct.
 4. What a flash boot does with saved value 13 (and where the active setting copy is stored).
 5. Flash only when complete; until then the SD card.
 
@@ -248,4 +253,111 @@ and checks the module 0x41 words: ALL OK (27 checks); `emu_cclook.py`, `emu_crum
 | `tools/cclook.py`, `build_sdchain.py --cclook` | own look data for colour mode 1 + PRO Neg. Hi restore: live `apply` / `restore` / `status`, and the card |
 | `tools/emu_cclook.py` | emulator test of the look patches (tuning hook, HOOK_B2, real pipeline selection functions) |
 | `tools/uitextmark.py` | live: label text IDs with "#ID" to see what a screen draws; `restore` removes them |
+| `tools/fsimlog.py` | live RAM-only call logger (`install` / `read` / `remove`): ring of {tag, caller, r0, r1, 4 loaded values}; how the RAW-conversion consumer was found (§6d, §9.5) |
+| `tools/fsim11.py rawconv`, `build_sdchain.py --rawconv` | the RAW CONVERSION row on the card (§6d) |
 | `decompiled/xpro1_blob1_0x774000.c.gz`, `xpro1_mod41_0x1420000.c.gz` | X-Pro1 blob1 and module 0x41 decompiles (Ghidra 12.1.4 + JDK 21 in `~/opt`) |
+
+## 9. Instructions for an AI agent: adding another film simulation
+
+Read this whole section, then `ADDING_FILM_SIMS.md` (the numbers and tables), then the parts of §2–§6d and
+`NOTES.md` that cover the place you are changing. Classic Chrome (film sim 6) is the worked example for every step;
+copy its code (`tools/fsim11.py`, `tools/cclook.py`) rather than inventing a new mechanism.
+
+### 9.1 Rules from the camera owner (non-negotiable)
+
+1. **Never write flash.** Everything goes into RAM: live over USB for experiments, the SD dual-boot card for use.
+   The flashed firmware is `build/ptpdebug_385` (v2 + USB debug PTP ops PEEK 0x9010 / POKE 0x9011 / CALL 0x9012).
+2. **Results come from data you read**, i.e. EXIF, USB PEEK, the logger, the user's photos. Never LED blink codes.
+3. **Before every live camera test, tell the user what they will see** (e.g. "one extra row", "nothing visible")
+   and how it is undone. **Remove test changes afterwards** (`restore` / `remove`, or say a power cycle clears them).
+   A leftover test label once replaced a menu name, and the user had to point it out.
+4. Keep each step tied to the film-sim goal. One question per camera test. Ask the user to do the camera actions
+   (menu, shutter, conversion, cable); you do the USB reads.
+5. Before the user boots **without** the card, a stock film simulation must be selected: the flash firmware has no
+   row for the new stored value.
+6. Commit only when asked, on the working branch (`v3-cc-sdboot`); docs (§1 table, the new section, README status
+   row, TODO, card README, NOTES) are part of every finished step.
+
+### 9.2 Environment
+
+* Python: `~/.venvs/xpro1-re/bin/python` (keystone, capstone, unicorn, numpy). Run from `re/`.
+* **Card input is the official 3.82 file `../FPUPDATE.DAT`** (repo root). `build/ptpdebug_385/FPUPDATE.DAT` is only
+  for `--flash` / the emulators' 4th argument (the flashed tuning values the hooks expect). Building the card from
+  the flashed file gives a card whose tuning checks fail.
+* Images: `work/blob1.bin` (RAM 0x774000), `work/blob2.bin` (0xe0ec80), `.asm` listings next to them; modules are
+  plain in the decoded update image (XOR 0xff): 0x41 at file 0x46025c → RAM 0x1420000, 0x44 at file 0x60025c → RAM
+  0x15c0000 (0x42 0x14c0000, 0x43 0x1500000). Full RAM dump: `work/dram/menu.bin` (256 MB, index = address).
+  Decompiles: `decompiled/*.c.gz` (blob1, blob2, modules 0x41–0x44, X-E2 blob1/blob2); unzip to the scratchpad.
+* Camera on USB: `lsusb | grep -i fuji` → `04cb:0280`. Flash-booted = debug PTP available; SD-booted cards too.
+
+### 9.3 Workflow (one film simulation)
+
+1. **Pick the numbers** from `ADDING_FILM_SIMS.md` §1 (MODE_FSIM, colour mode, stored value, menu row, text IDs,
+   glyph, presets, curve slot, tone family, RAW-conversion film code). Write them down in NOTES first.
+2. **Verify every word you will change, statically**, in the official image (like `fsim11.check()` /
+   `check_rawconv()`): each patch is (address, stock word, new word), and the runtime code re-checks the stock word
+   before writing. Never patch a word you have not read.
+3. **Live test over USB** for anything visible (menu rows, names, icons): small `apply` / `restore` / `status` tool
+   like `tools/fsimslot.py`, data in free loader filler (check it is all 0xff first). Tell the user what changes.
+4. **Card code**, extending `tools/fsim11.py` (or a sibling module with the same structure):
+   * blob1 data (setting tables, menu lists, pointers) → stage-B markers (applied before blob1 runs);
+   * module code/data → the module-init hook (blob1 0x9717b8 `blx r3`): one patch table per module, applied when
+     `r3` is that module's first init (0x41: 0x1430170, 0x44: 0x15c05ec). Modules are streamed in later; patching
+     them earlier does nothing;
+   * blob2 code → HOOK_B2 table (blob2 in RAM, not started); guard entries that depend on optional data;
+   * tuning bytes → cchook `db_params` (old value checked);
+   * new code → small stubs in the filler; a stock branch to "default/fallback" is the usual place to divert
+     (`b`/`bne`/`movne` → stub that handles the new value and jumps back to the stock target otherwise).
+   Filler for the card: `0xa400`–`0xc000` (`install` asserts this). Live tools use `0xb800`–`0xd010`; don't mix.
+5. **Emulator checks** (real firmware code, unicorn): extend `tools/emu_fsim11.py` / `emu_cclook.py` with the new
+   value *and* the stock values (stock must be unchanged). Run all three on the new card:
+   `emu_crumbs.py ../FPUPDATE.DAT <ffboot> work`, `emu_fsim11.py` and `emu_cclook.py ../FPUPDATE.DAT <ffboot> work
+   build/ptpdebug_385/FPUPDATE.DAT`. All must print ALL OK.
+6. **Regression**: `build_sdchain.py ../FPUPDATE.DAT work/chain/chain_crumbs.bin <out> --crumbs --uiswap --cc`
+   must still give ffboot `8436762b…`. New option → its own flag, off by default.
+7. **Card**: build into `build/sdchain_<name>/` with a README (command, sha256, what changed, checks, what's not
+   covered). Write: copy both files to the card root, `sync`, unmount, remount, re-check sha256, unmount from
+   outside the mount point (`cd ~` first). Don't power off the reader.
+8. **Camera test**, then docs (§9.1 rule 6).
+
+### 9.4 Every place a film simulation appears
+
+| Place | Classic Chrome | Where |
+|---|---|---|
+| FILM SIMULATION menu (shooting) + shooting-menu line | done | §4, §6, §6b; `fsim11.py` |
+| Look data (matrices, tone, chroma) | done | §6c; `cclook.py` |
+| RAW CONVERSION (playback) | done | §6d; `fsim11.py rawconv` |
+| Q menu, film-sim bracketing, custom settings, shooting-screen indicator, EXIF FilmMode | open | `ADDING_FILM_SIMS.md` §4 |
+
+A second new film simulation needs a fresh value in each place (the stubs get one more `cmp`), never Classic
+Chrome's numbers: film sim 6, colour mode 1, stored 13, row 10, texts 819/1215, presets 17/18/12, family 5,
+RAW-conversion code 8.
+
+### 9.5 When reading the code doesn't find it: trace it live
+
+Some links have no table and no direct reference (state is passed through messages, structs and pointers). The
+RAW-conversion consumer was found only like this:
+
+1. Hook candidate functions with `tools/fsimlog.py` (each hook: first instruction → branch to a stub that logs
+   {tag, caller, r0, r1, 4 values loaded through r0/r1/fp} into a RAM ring, runs the original instruction, returns).
+   A hooked first instruction must not be PC-relative; check the site holds its stock word before installing.
+2. Ask the user for one action with a **recognisable value** that differs from the current setting (e.g. a
+   PROVIA-shot RAW converted as ASTIA, so the value 1 can't come from the file).
+3. `read`, find the entry carrying that value, go one level up (its caller / the struct it came from), add hooks
+   there, repeat. Three rounds were enough for RAW conversion.
+4. `remove` when done (also wipes older ring layouts). A power cycle removes everything too.
+
+Static search tips that worked: grep the `.asm` for `movw/movt` pairs and literal-pool words with the address
+(Ghidra hides pointer-based writes); scan `work/dram/menu.bin` for the 32-bit address; decompiles name cross-blob
+calls `func_0x…`; jump tables sit right after `ldrls pc, [pc, rN, lsl #2]`.
+
+### 9.6 Pitfalls already paid for
+
+* PEEK must be 4-byte aligned (an odd address returns 0 bytes and aborts).
+* Live code patches: POKE, then read 2 MB (pushes the D-cache), then CALL 0x8a5d70 (I-cache invalidate).
+* A power loss / battery change wipes every live patch; re-check the filler is clean (0xff) before re-installing.
+* Keystone rejects numeric local labels (`1f`); use named labels.
+* Emulating a chain entered mid-function: give it a fake frame whose popped return address is the stop address.
+* A conversion-engine reverse lookup returns the *first* matching row; ambiguous codes (6/7 appear twice in
+  setting 0x152) are not a fault.
+* Stub tables grow: re-check slot sizes (`assert len(code) <= …`) after adding entries.

@@ -1115,3 +1115,6 @@ X-Pro1 blob1 now decompiled too: `decompiled/xpro1_blob1_0x774000.c.gz` (Ghidra 
   fsim11's HOOK_INIT grew (push first, second table for module 0x44, 0xa0 slot) — layout change only).
   Patch list: fsim11.py `rawconv=True` (RC_* constants), build_sdchain `--rawconv`; emu_fsim11 +7 checks (27, ALL OK),
   emu_cclook tolerates the two extra blob2 entries. Logger removed from the camera. FINDINGS §6d.
+* (2026-11-15) **Camera-confirmed** (user): `sdchain_cc11rc_green` shows CLASSIC CHROME in the shooting menu and the
+  playback RAW CONVERSION menu; conversion works. FINDINGS §9 = instructions for an AI agent adding further film
+  sims. TODO: Classic Chrome accuracy test vs a real CC body.

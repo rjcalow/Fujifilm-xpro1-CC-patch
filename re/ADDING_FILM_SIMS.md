@@ -2,6 +2,7 @@
 
 Written 2026-11-15 after Classic Chrome was added as an 11th FILM SIMULATION entry (SD-boot card
 `build/sdchain_cc11own_green/`). Background and every address: `FINDINGS.md` (§2–§6c) and `NOTES.md`.
+Step-by-step working instructions (rules, workflow, checks, live tracing) for an AI agent: `FINDINGS.md` §9.
 All addresses are RAM addresses of the official 3.82 firmware (blob1 0x774000, blob2 0xe0ec80, module 0x41 0x1420000).
 
 Classic Chrome used: MODE_FSIM **6**, colour mode **1**, stored value **13**, menu row **10**, text IDs **819 / 1215**,

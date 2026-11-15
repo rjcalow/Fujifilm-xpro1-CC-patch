@@ -101,7 +101,12 @@ Versions/rollback rules (no official downgrade or re-install; label 3.83+; rollb
 - [x] (2026-11-13) Own look data for film sim 6 + PRO Neg. Hi back to stock: `tools/cclook.py`, card
       `build/sdchain_cc11own_green/` (ffboot 2edd070e…), emulator ALL OK, applied live. **Photos pending** (FINDINGS §7.1).
 - [ ] New entry in Q menu, bracketing, shooting-screen indicator, EXIF FilmMode (FINDINGS §7.3).
-- [ ] Camera test of `build/sdchain_cc11rc_green/` (RAW CONVERSION row + conversion as Classic Chrome; FINDINGS §6d).
+- [x] (2026-11-15) Camera test of `build/sdchain_cc11rc_green/`: CLASSIC CHROME in the shooting menu and the
+      playback RAW CONVERSION menu, conversion works (user). FINDINGS §6d.
+- [ ] **Test Classic Chrome accuracy** (card `sdchain_cc11rc_green`): same scenes (colour chart or red/green/blue
+      subjects, skin, sky, foliage), manual exposure, Daylight WB, Color 0, Tone 0. Reference: X-T20 / X-E2 in Classic
+      Chrome. X-Pro1: shoot RAW, in-camera RAW conversion as CLASSIC CHROME and as PROVIA. Compare CC/PROVIA per hue on
+      each camera (the ratio cancels sensor differences) and tone (shadows, curve 38). Only then decide on corrections.
 - [ ] **ACROS** as a 12th film simulation (roadmap; recipe in ADDING_FILM_SIMS.md). Numbers: MODE_FSIM 2 or 4, a
       colour mode from 8/9, stored value from 8/9/10/14/15, menu row 11 (tables copied with 12 rows), RAW-conversion
       film code 9, text IDs + a glyph in the font for the icon. Look: ACROS is monochrome — start from MONO's
