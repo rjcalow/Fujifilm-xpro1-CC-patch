@@ -22,6 +22,8 @@ This repository holds three things:
 
 ## Status
 
+An [experimental four-look patcher for the original X-Pro1](public/FOUR_LOOKS.md) builds a normal-start updater labelled **3.93**. It adds Superia 400, Reggie's Portra and Kodachrome II alongside Classic Chrome and increases HIGH white focus peaking.
+
 | Part | State |
 |---|---|
 | Classic Chrome patch **v2** (labelled 3.83) | **Flashed and working** on the test camera. In-camera RAW conversion uses it. The camera still reports Ver3.82 |
