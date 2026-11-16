@@ -9,7 +9,8 @@ This repository holds three things:
    Classic Chrome, using Fujifilm's own data from the X-E2. The script is in [`public/`](public/); full instructions
    are in [`public/README.md`](public/README.md).
    **New (SD boot, 2026-11-13):** Classic Chrome as its **own 11th film simulation**, with the X-E2's icon and name,
-   keeping all ten stock ones. See [SD card: Classic Chrome as its own film simulation](#sd-card-classic-chrome-as-its-own-film-simulation).
+   keeping all ten stock ones. Since 2026-11-15 it is also in the playback **RAW CONVERSION** menu. See
+   [SD card: Classic Chrome as its own film simulation](#sd-card-classic-chrome-as-its-own-film-simulation).
 3. **Reverse-engineering tools** in [`re/`](re/). They cover:
    - **SD dual boot:** start a modified firmware from the SD card without writing the camera's flash.
    - **USB debug firmware:** read and write camera memory from a PC.
