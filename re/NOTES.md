@@ -1060,3 +1060,61 @@ X-Pro1 blob1 now decompiled too: `decompiled/xpro1_blob1_0x774000.c.gz` (Ghidra 
   `FUN_00f32fcc` / `FUN_00f2d404` / `FUN_00f30b10` / `FUN_00f2c8fc` / `FUN_00f321f0` / `FUN_00f3232c`: colour mode 1 =
   what v2's PRO Neg. Hi produced (all sRGB/alt/mode variants, curve 38), PRO Neg. Hi = stock, PROVIA/SEPIA/MONO
   unchanged. `--cc` alone still reproduces 8436762b…; the borrow card (`--fsim11`) is now 7d62033a… (table hook).
+
+## Session 2026-11-14: RAW-conversion film-sim menu (mapping in progress)
+* Camera (user, card 2edd070e…): CLASSIC CHROME shows in the shooting menu but **not in the RAW-conversion menu**
+  (expected: that screen has its own data, untouched so far).
+* **Screen** = module 0x41 `FUN_01442d64` (item group 0x1c); records at 0x142adbc (12 × {item, title, gfx, flag, A, B}):
+  item 3 FILM SIMULATION, B (0x142ae18) = icon table 0x142e558 (1197 … 1213, then 830 for SEPIA; 10 entries, next
+  word belongs to the WB table). Name of the highlighted row: `FUN_0147c5dc(0x1c, …)` → table 0x14838f4 (1198 …
+  1216, 10 entries, followed by other data; movw/movt at 0x147c624/28, row limit `cmp r4,#9` at 0x147c61c).
+* **Setting 0x152** (blob1 node 0x778d9c, group 0x2e): list 0x779cf4 rows [0,1,2,8,7,3,5,4,6,9]; conversion table
+  0x78adc8 (pointer 0x78bb58 = 0x78ba10[0x152]) has exactly 10 rows {-, -, code} and **no spare row**: row → code
+  0→0, 1→5, 2→3, 3→6, 4→7, 5→8, 6→9, 7→6, 8→7, 9→10.
+* **The choice is stored as two values** in the RAW-convert block 0x9d4d28: +8 (0x9d4d30) = colour film code
+  (0 PROVIA, 5, 3, 6 Neg Std, 7 Neg Hi) and +0x1c (0x9d4d44) = the COLOR setting, whose values 6–10 mean MONO, +Ye/R,
+  +R/Ye, +G, SEPIA (shared with setting 0x158 COLOR). Apply: blob2 `FUN_00f10e58` chain 0xf10ee0–0xf11048 (rows 3–6,
+  9 → +0x1c; rows 0, 1, 2, 7, 8 → +8; **any other row → both 0 = PROVIA**). Cursor: `FUN_00f1e248` case 0x152 chain
+  0xf1f8f8–0xf1f964 (+0x1c 6–10 → rows 3, 4, 5, 6, 9; +8 0/5/3/6/7 → rows 0, 1, 2, 7, 8). Seed from the opened RAW:
+  `FUN_00f105f4` (image info 0x9d2450 +0x164 film, +0x134 colour).
+* The block pointer is handed on by message 0x115 (`FUN_00f77dd4`, senders 0xe45484 …) and blob1 0x7845cc
+  (ctx[0x1a]); **the consumer that turns (film, colour) into the conversion's MODE_FSIM is not in blob1/blob2**
+  → decompiling modules 0x42–0x44. The conversion job's film sim (0x13a0974 +0x4c) is read from the property bank
+  byte +0x3a (blob1 0x98e888).
+* (2026-11-15) **X-E2 comparison:** its RAW-convert apply (X-E2 blob2 `FUN_0108aeb0`, block 0xcdc074: +8 film code,
+  +0x1c COLOR code) is the same code with one more row: **row 3 → film code 8 = CLASSIC CHROME** (0 PROVIA, 3 ASTIA,
+  5 Velvia, 6 Neg Std, 7 Neg Hi). So the X-Pro1 needs film code 8 for its new row too; the consumer that maps film
+  code → film simulation is still not found on either camera (no switch/table with 0→0, 3→1, 5→3, 6→11, 7→12, nor
+  to colour modes, in blob1/blob2/modules 0x41–0x44; modules 0x42–0x44 decompiled to `decompiled/`).
+* Not the consumer: module 0x44 only copies message 0x115's 0xc4-byte payload (block pointer at +0xc0); the image's
+  conversion film sim is bank byte +0x3a (read 0x98e888), written by 0x98e844 (from the copier 0x98f854, source
+  struct byte +0x3a set by 0x9913a8) or 0x9bc068 (settings +0x128 via identity table 0x9bdc10).
+* `tools/fsimlog.py`: live logger on 0x9913a8 / 0x98e844 / 0x98f854 / 0x98e888 / 0x9bc068 (caller, r0, r1 into a
+  ring at 0xbf00) to find the consumer with one RAW conversion on the camera. Not yet run.
+* Guide for adding further film simulations: `ADDING_FILM_SIMS.md`.
+* (2026-11-15, camera not on USB) More static search, all negative: no byte/u16/u32 table (strides 1–32) in the
+  RAM dump `work/dram/menu.bin` mapping film code (0, 3, 5, 6, 7) → MODE_FSIM, colour mode, stored 0x3d value,
+  menu row or EXIF FilmMode, nor the reverse (MODE_FSIM → film code, as the RAF writer would need). Film code looks
+  like the index of Fujifilm's EXIF FilmMode list (0 F0/PROVIA, 3 F1b/ASTIA, 5 F2/Velvia, 6 Pro Neg Std, 7 Pro Neg
+  Hi, 8 Classic Chrome), but no table of those EXIF values exists either. Setting 0x152 is never passed to the
+  conversion engine. The settings struct's film sim (+0x128, read by 0x9bc068) comes from getter `FUN_009af3b4` =
+  global 0xa866bc (no direct writer; struct written by pointer). The RAW-convert job is an "UI API call"
+  (X-E2 `FUN_010440c8`: {0x4a or 0x7e, group 0x15, block, image info}, string ">> playback raw convert"); module
+  0x44 copies its 0xc4-byte payload to 0x1218bb0 / 0x1218c74 / 0x1218d38, which have no direct readers.
+  → Needs the live logger (`tools/fsimlog.py`).
+* (2026-11-15, logger runs 2–4) **RAW-conversion film-code consumer found: module 0x44 `FUN_016326a4`** (RAM
+  0x16326a4). It builds the conversion request 0x121bcb4 from the RAW-convert block (pointer 0x12091d8 → 0x9d4d28):
+  word[2] film code → request word[2] = MODE_FSIM by a switch (3→1 ASTIA, 5→3 Velvia, 6→11, 7→12, else 0 =
+  PROVIA); word[7] COLOR 1/2/4/5 → request word[7] = 7/8/9/10, 6–10 → mono/sepia film sims 4/8/9/10/5. The request
+  goes to blob2 `FUN_0107b948` (mode 0xf job) → `FUN_010a59a0` → engine +0x1570 → job params → tuning ctx
+  (`FUN_00f38a00`, logged r1 = 3 for Velvia, 1 for ASTIA). Classic Chrome needs `case 8 → 6` in that switch.
+  Chain evidence: `tools/fsimlog.py` hooks 7–10 (v3 logger, ring 0xc300).
+* Card **`build/sdchain_cc11rc_green/`** (ffboot 6693177b…, ffsys 7661dadc…): `--crumbs --uiswap --cc --fsim11 --cclook
+  --rawconv` from the **official** FPUPDATE.DAT (building from `build/ptpdebug_385/FPUPDATE.DAT` gives a card whose
+  tuning expectations are wrong — emu_cclook fails; the own card rebuilt from the official file is 8d8364dc… because
+  fsim11's HOOK_INIT grew (push first, second table for module 0x44, 0xa0 slot) — layout change only).
+  Patch list: fsim11.py `rawconv=True` (RC_* constants), build_sdchain `--rawconv`; emu_fsim11 +7 checks (27, ALL OK),
+  emu_cclook tolerates the two extra blob2 entries. Logger removed from the camera. FINDINGS §6d.
+* (2026-11-15) **Camera-confirmed** (user): `sdchain_cc11rc_green` shows CLASSIC CHROME in the shooting menu and the
+  playback RAW CONVERSION menu; conversion works. FINDINGS §9 = instructions for an AI agent adding further film
+  sims. TODO: Classic Chrome accuracy test vs a real CC body.

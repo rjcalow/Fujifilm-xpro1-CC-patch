@@ -105,7 +105,8 @@ while True:
     a, o, n, fl = struct.unpack('<4I', L[tab:tab + 16])
     if a == 0: break
     ent.append((a, o, n, fl)); tab += 16
-check('card holds the 20-entry blob2 table (6 tone entries flagged)', len(ent) == 20 and sum(fl for *_, fl in ent) == 6)
+rc_ent = [e for e in ent if e[0] in (F.RC_APPLY, F.RC_CUR)]                   # --rawconv adds two unflagged entries
+check('card holds the 20-entry blob2 table (6 tone entries flagged)', len(ent) - len(rc_ent) == 20 and sum(fl for *_, fl in ent) == 6)
 ch = sorted({(i & ~3) + F.B2_BASE for i in range(len(b2)) if got[i] != b2[i]})
 check('HOOK_B2 without curve 38: the 14 matrix patches only, registers kept',
       r[0] == 'ok' and r[1] == regs and r[2] and ch == sorted(a for a, o, n, fl in ent if not fl)

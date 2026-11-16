@@ -9,6 +9,7 @@
 #   --uiswap: with --crumbs, swap red/green in every UI colour record at stage B (green menu accent)
 #   --cclook: with --fsim11, Classic Chrome in its own presets (3x3 17/18, 2x2 12, tone family 5) and PRO Neg. Hi back to
 #             stock (cclook.py); --flash FILE = the flashed firmware whose tuning values are expected (default ptpdebug_385)
+#   --rawconv: with --fsim11, CLASSIC CHROME also in the RAW CONVERSION menu (film code 8; fsim11.py rawconv)
 #   --fsim11: with --crumbs --cc, Classic Chrome as an 11th FILM SIMULATION entry (icon + name), PRO Neg. Hi keeps its name (fsim11.py)
 #   --cc: with --crumbs, Classic Chrome v3 chroma values + menu name CLASSIC CHROME through run-time hooks (cchook.py);
 #         the flash firmware must be a v2 build (ccswap_v2 or ptpdebug_385)
@@ -19,10 +20,10 @@
 import hashlib, os, struct, sys, zlib
 args = sys.argv[1:]; markers = '--markers' in args; trace = '--trace' in args; hook = '--hook' in args
 sec0cp = '--sec0cp' in args; uiswap = '--uiswap' in args; cc = '--cc' in args; sec0trap = '--sec0trap' in args or sec0cp; crumbs = '--crumbs' in args
-fsim11 = '--fsim11' in args; cclook_on = '--cclook' in args
+fsim11 = '--fsim11' in args; cclook_on = '--cclook' in args; rawconv = '--rawconv' in args
 flash = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'build', 'ptpdebug_385', 'FPUPDATE.DAT')
 if '--flash' in args: k = args.index('--flash'); flash = args[k + 1]; del args[k:k + 2]
-for f in ('--markers', '--trace', '--hook', '--sec0trap', '--sec0cp', '--crumbs', '--uiswap', '--cc', '--fsim11', '--cclook'):
+for f in ('--markers', '--trace', '--hook', '--sec0trap', '--sec0cp', '--crumbs', '--uiswap', '--cc', '--fsim11', '--cclook', '--rawconv'):
     if f in args: args.remove(f)
 dat, stub_path, out = args[:3]
 raw = open(dat, 'rb').read(); img = bytes(x ^ 0xff for x in raw)
@@ -37,7 +38,7 @@ if crumbs:
         import fsim11
         def _fsim11(L, asm, bl):
             used = max(i for i in range(0xa400, 0xc000) if L[i] != 0xff)
-            return fsim11.install(L, asm, bl, img, used + 1, look='own' if cclook_on else 'borrow')
+            return fsim11.install(L, asm, bl, img, used + 1, look='own' if cclook_on else 'borrow', rawconv=rawconv)
         kw = {'cc_lang': fsim11.lang(img), 'extra': _fsim11}
         if cclook_on:                                  # own Classic Chrome data + PRO Neg. Hi restore (cclook.py)
             import cclook
