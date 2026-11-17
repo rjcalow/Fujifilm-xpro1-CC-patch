@@ -1,6 +1,6 @@
-# Emulator test for the 11th film-simulation entry on the SD-boot card (fsim11.py; build_sdchain.py --crumbs --cc
-# --fsim11). Runs the real firmware code around every hook.
-# usage: emu_fsim11.py <official FPUPDATE.DAT> <ffboot.bin> <re/work dir> <flash firmware FPUPDATE.DAT (v2 build)>
+# Emulator test for the 11th film-simulation entry on the SD-boot card (features/menus.py, rawconv.py;
+# convert.py). Runs the real firmware code around every hook.
+# usage: emu_card.py <official FPUPDATE.DAT> <ffboot.bin> <re/work dir> <flash firmware FPUPDATE.DAT (v2 build)>
 #   1 stage B (loader final jump → blob1 entry): blob1 changes = cchook call sites + marker + the fsim11 table
 #     (row 10, two menu-list pointers, two call sites); new list = stock + row 10.
 #   2 real conversion engine blob1 0x78a9ec after stage B: stored 13 → MODE_FSIM 6, menu row 10 → 13, 6 → row 10,
@@ -16,12 +16,15 @@
 import os, struct, sys, zlib
 from unicorn import Uc, UcError, UC_ARCH_ARM, UC_MODE_ARM, UC_HOOK_CODE
 from unicorn.arm_const import *
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'public'))
-import crumbs as C, cchook as H, fsim11 as F, uitext
+HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in ('..', '../..', '../../tools', '../../../public'): sys.path.insert(0, os.path.normpath(os.path.join(HERE, _p)))
+from classic_chrome.engine import chain as C, hooks as H
+from classic_chrome.features import texts as uitext
+import card_map
 
 dat, boot, W, flash = sys.argv[1:5]
 img = bytes(x ^ 0xff for x in open(dat, 'rb').read())
+F = card_map.for_image(img)
 fimg = bytes(x ^ 0xff for x in open(flash, 'rb').read())
 ffboot = open(boot, 'rb').read()
 m = ffboot.find(struct.pack('<I', 0x4e494843)); _, po, pl, ol, crc = struct.unpack('<5I', ffboot[m - 0x14:m])

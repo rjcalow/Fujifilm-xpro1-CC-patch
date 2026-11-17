@@ -78,7 +78,7 @@ Building a card (Linux, needs the research environment below):
 sh re/tools/setup_work.sh                     # venv + extracted firmware in re/work/ + compiled stubs
 PY=~/.venvs/xpro1-re/bin/python
 $PY re/tools/build_sdchain.py FPUPDATE.DAT re/work/chain/chain_crumbs.bin re/build/mycard --crumbs [--uiswap]
-$PY re/tools/emu_crumbs.py FPUPDATE.DAT re/build/mycard/ffboot.bin re/work      # emulator checks, must say ALL OK
+$PY re/classic_chrome/validate/emu_chain.py FPUPDATE.DAT re/build/mycard/ffboot.bin re/work   # emulator checks, must say ALL OK
 ```
 
 Copy `ffboot.bin` and `ffsys.bin` to the root of a FAT32 card and verify their checksums. Then unmount the card;
@@ -88,10 +88,22 @@ accent green. `--cc` adds the Classic Chrome v3 candidate values and the menu na
 
 ### SD card: Classic Chrome as its own film simulation
 
+**Converter (2026-11-16):** [`re/classic_chrome/convert.py`](re/classic_chrome/README.md) builds the complete card
+(11th film simulation with its own look, shooting menu, RAW CONVERSION menu, green accent) from the official file,
+one module per feature, as the base for further firmware changes. Its default output is byte-identical to the
+camera-confirmed card (ffboot `6693177b…`):
+
+```
+$PY re/classic_chrome/convert.py FPUPDATE.DAT re/build/mycard --verify   # --list, --look borrow, --no-rawconv, --no-green
+```
+
+`--verify` runs the emulator checks (real firmware code) and compares the card with the known-good builds.
+
+The research builder it replaces for this job (same output with the matching flags):
+
 ```
 $PY re/tools/build_sdchain.py FPUPDATE.DAT re/work/chain/chain_crumbs.bin re/build/sdchain_cc11_green --crumbs --uiswap --cc --fsim11
-$PY re/tools/emu_fsim11.py FPUPDATE.DAT re/build/sdchain_cc11_green/ffboot.bin re/work FLASHED_FIRMWARE.DAT   # ALL OK
-$PY re/tools/emu_crumbs.py FPUPDATE.DAT re/build/sdchain_cc11_green/ffboot.bin re/work                       # ALL OK
+$PY re/classic_chrome/verify.py FPUPDATE.DAT re/build/sdchain_cc11_green --look borrow --no-rawconv           # ALL OK
 ```
 
 Camera-tested build: ffboot.bin `1923db4f…`, ffsys.bin `7661dadc…` (2026-11-13). After an SD boot the FILM
@@ -102,11 +114,11 @@ tables at boot, the menu module when it is streamed in, the colour-mode table be
 the menu text on every language load. The icon is already in the X-Pro1's font, unused.
 
 * With `--fsim11` alone the look is borrowed from the Classic Chrome data that the flashed v2 keeps in PRO Neg. Hi's
-  slot, so PRO Neg. Hi also looks like Classic Chrome. **With `--cclook` as well** (`re/tools/cclook.py`), the new
+  slot, so PRO Neg. Hi also looks like Classic Chrome. **With `--cclook` as well** (`re/classic_chrome/features/cc_look.py`), the new
   entry gets its own data (the X-E2 matrices in free presets 17/18, the v3 chroma matrix in preset 12, the X-E2
   tone curve through a tone family donated by SEPIA, whose curves are PROVIA's) and PRO Neg. Hi goes back to
   stock. That takes 20 patched words in the image pipeline's selection code (each a fallback instruction turned
-  into a call to a 4-instruction stub) and 161 tuning bytes; `re/tools/emu_cclook.py` runs the real selection
+  into a call to a 4-instruction stub) and 161 tuning bytes; `re/classic_chrome/validate/emu_look.py` runs the real selection
   functions for every colour mode and variant. Build: `re/build/sdchain_cc11own_green/` (README there).
 * **With `--rawconv` as well**, CLASSIC CHROME is also the 11th row of RAW CONVERSION > FILM SIMULATION and the
   conversion develops with it: the RAW-conversion screen stores a "film code", and the code that maps it to a film
@@ -161,7 +173,7 @@ restores everything.
 | `re/NOTES.md` | Session notes: memory map, formats, every finding with addresses |
 | `re/FAILURES.md` | SD-boot failure log, established facts (E1–E27) and working rules. Read before any camera test |
 | `re/TODO.md` | Open tasks |
-| `re/classic_chrome/` | Classic Chrome port analysis |
+| `re/classic_chrome/` | **Converter** `convert.py` (official firmware → SD-boot card with extra film simulations): `engine/` (patch engine, SD-boot chain, run-time hooks), `config/` (film simulations, tuning values), `features/` (menus, RAW conversion, texts, looks), `validate/` + `verify.py` (emulator checks, known-good builds); plus the Classic Chrome port analysis |
 | `re/sdchain/` | SD chain stub (C + ARM assembly, built with `zig cc`) |
 | `re/tools/` | Builders, emulator tests (unicorn), USB tools |
 

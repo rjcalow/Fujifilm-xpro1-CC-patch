@@ -1,6 +1,6 @@
-# Emulator test for Classic Chrome's own look data on the SD-boot card (cclook.py; build_sdchain.py --crumbs --cc
-# --fsim11 --cclook). Runs the real firmware code: the hooks on the card, then the pipeline's selection functions.
-# usage: emu_cclook.py <official FPUPDATE.DAT> <ffboot.bin> <re/work dir> <flashed firmware FPUPDATE.DAT (v2 build)>
+# Emulator test for Classic Chrome's own look data on the SD-boot card (features/cc_look.py;
+# convert.py --look own). Runs the real firmware code: the hooks on the card, then the pipeline's selection functions.
+# usage: emu_look.py <official FPUPDATE.DAT> <ffboot.bin> <re/work dir> <flashed firmware FPUPDATE.DAT (v2 build)>
 #   1 tuning hook (real blob1 0x857e44, read simulated with the flashed area): result = flashed area + the planned
 #     byte changes, exactly; official 3.82 area -> only the entries whose old value is stock apply (new presets,
 #     selectors, family-5 curves), PRO Neg. Hi untouched.
@@ -13,9 +13,11 @@
 import os, struct, sys, zlib
 from unicorn import Uc, UcError, UC_ARCH_ARM, UC_MODE_ARM, UC_HOOK_CODE
 from unicorn.arm_const import *
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'public'))
-import crumbs as C, cchook as H, fsim11 as F, cclook as K
+HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in ('..', '../..', '../../tools', '../../../public'): sys.path.insert(0, os.path.normpath(os.path.join(HERE, _p)))
+from classic_chrome.engine import chain as C, hooks as H
+from classic_chrome.features import cc_look as K
+import card_map as F
 import xpro1_cc_patch as P
 
 dat, boot, W, flash = sys.argv[1:5]

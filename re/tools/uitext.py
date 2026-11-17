@@ -10,7 +10,8 @@ usage: uitext.py [LANG] FIRST [COUNT]      (LANG = block number, default 1 = Eng
 import os, struct, sys
 
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-RAM, FILE0, BLOCK, N = 0x4f0000, 0x104025c, 0x20000, 1693
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+from classic_chrome.features.texts import RAM, FILE0, BLOCK, N, base_of   # language-block layout
 _not = None
 
 
@@ -23,21 +24,6 @@ def block(k):
 def base(k):
     """Offset of the text table in language block k."""
     return base_of(block(k))
-
-
-def base_of(blk):
-    """Offset of the text table in a language block image."""
-    used = len(bytes(blk).rstrip(b'\xff'))
-    w = lambda o: struct.unpack_from('<I', blk, o)[0]
-    isp = lambda d: RAM <= d < RAM + used
-    o = 0
-    while o < used - 8:
-        if isp(w(o)) and 0x10000 <= w(o + 4) < 0x80000 and (w(o + 4) & 0xffff) < 0x400:
-            s = o; c = 0
-            while isp(w(o)) and 0x10000 <= w(o + 4) < 0x80000: o += 8; c += 1
-            if c >= 16: return s - 4
-        else: o += 4
-    raise ValueError('no text table')
 
 
 def text(k, i):
