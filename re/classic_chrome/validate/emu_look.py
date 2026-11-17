@@ -21,6 +21,7 @@ import card_map as F
 import xpro1_cc_patch as P
 
 dat, boot, W, flash = sys.argv[1:5]
+PEAKING = '--peaking' in sys.argv[5:]                             # convert.py --peaking: three more tuning bytes
 img = bytes(x ^ 0xff for x in open(dat, 'rb').read())
 fimg = bytes(x ^ 0xff for x in open(flash, 'rb').read())
 ffboot = open(boot, 'rb').read()
@@ -30,6 +31,9 @@ b1 = open(os.path.join(W, 'blob1.bin'), 'rb').read(); b2 = open(os.path.join(W, 
 u1, p1 = struct.unpack('<II', fimg[0x10025c:0x100264]); fb1 = P.lz_decode(fimg, 0x10025c + 20, 0x10025c + p1, u1)
 stock = img[K.DB_FILE:K.DB_FILE + K.DB_LEN]; v2 = fimg[K.DB_FILE:K.DB_FILE + K.DB_LEN]
 plan = K.db_bytes(stock, v2)
+if PEAKING:
+    from classic_chrome.features import peaking
+    plan.update(peaking.BYTES)
 want = bytearray(v2)
 for i, (o, n) in plan.items(): want[i] = n
 ok = True
@@ -107,8 +111,10 @@ while True:
     a, o, n, fl = struct.unpack('<4I', L[tab:tab + 16])
     if a == 0: break
     ent.append((a, o, n, fl)); tab += 16
-rc_ent = [e for e in ent if e[0] in (F.RC_APPLY, F.RC_CUR)]                   # --rawconv adds two unflagged entries
-check('card holds the 20-entry blob2 table (6 tone entries flagged)', len(ent) - len(rc_ent) == 20 and sum(fl for *_, fl in ent) == 6)
+look_sites = {a for a, _, _ in K.CODE + K.TONE}                        # other features add unflagged entries
+look_ent = [e for e in ent if e[0] in look_sites]
+check('card holds the 20 look entries of the blob2 table (6 tone entries flagged)', len(look_ent) == 20
+      and sum(fl for *_, fl in ent) == 6 and all(fl for a, o, n, fl in look_ent if a in {t[0] for t in K.TONE}))
 ch = sorted({(i & ~3) + F.B2_BASE for i in range(len(b2)) if got[i] != b2[i]})
 check('HOOK_B2 without curve 38: the 14 matrix patches only, registers kept',
       r[0] == 'ok' and r[1] == regs and r[2] and ch == sorted(a for a, o, n, fl in ent if not fl)

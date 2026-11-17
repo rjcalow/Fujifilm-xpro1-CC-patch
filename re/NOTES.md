@@ -1170,3 +1170,21 @@ X-Pro1 blob1 now decompiled too: `decompiled/xpro1_blob1_0x774000.c.gz` (Ghidra 
   + emu_four_looks PASS; converter 4 cards identical + verify ALL OK; build_sdchain 8436762b / 6693177b /
   127c321c identical; romdump reference build + emu_dumpcard ALL OK; emu_cchook ALL OK. FOUR_LOOKS.md: warning not
   to SD-boot our cards on 3.93.
+
+## Session 2026-11-17: PR #3's looks on the SD card
+* convert.py --four-looks / --add / --peaking: features/recipes.py, peaking.py; looks.OwnLook extras (Superia cm 8);
+  menus.FilmSimMenu for rows 10..13 (conversion table copied when > 1 entry, name table always copied, DRAW stub for
+  rows 11+). Card 4261ad85… (re/build/sdchain_fourlooks_green), default 72d00748… (sdchain_cc11wb_green).
+* Found: FILM SIMULATION name table 0x1483c20 word 10 = WHITE BALANCE name table 0x1483c48 entry 0 (used by the
+  same module-0x41 name lookup for another menu kind, cap `cmp r4,#8`; texts 601 COLOR TEMPERATURE, 577 FINE, 580
+  SHADE, 583/586/589 FLUORESCENT 1-3, 592 INCANDESCENT, 598 UNDERWATER). Earlier cards and PR #3's 3.93 write 819
+  there → the WB menu's AUTO row would draw CLASSIC CHROME (to confirm on the camera). Fixed by the table copy.
+* validate/emu_extras.py (new), emu_card generalised (sims list), emu_look (--peaking, look entries counted by
+  site), verify.py passes them; regression.KNOWN updated (all hashes changed, old ones listed there).
+* Emulator pitfall: writing the flashed blob1 over the stage-B-patched one also removes stage B's call to HOOK_B2;
+  copy only the curve table (count 0x80b6f8 + table) when a test needs curve 38.
+* (2026-11-17, camera) Four-looks card 4261ad85… booted from SD: all patches present in RAM over USB (conversion table
+  0x78bb04 → 0xacc0, name table 0xae5c = 10 stock + 819 + 3 drawn names, cap #13, fsim 2 → cm 8, peaking 48/120/120,
+  0x1483c48 = 0). User: WHITE BALANCE menu normal, AUTO shown. Whether the earlier cards' write to 0x1483c48 was
+  visible is unconfirmed (not re-tested); the table copy stays either way.
+* (2026-11-17, camera) User: rows 10–13 with names + icons, each selectable and kept, all four pictures different. Four-looks card camera-confirmed.

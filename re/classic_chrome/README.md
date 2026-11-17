@@ -9,7 +9,11 @@ flash**. It is the base for further firmware changes: each change is a separate 
 ~/.venvs/xpro1-re/bin/python re/classic_chrome/convert.py --list                  # film simulations and features
 ```
 
-Default output (camera-confirmed 2026-11-15, ffboot `6693177b…`): CLASSIC CHROME as an 11th FILM SIMULATION entry
+`--four-looks` adds PR #3's SUPERIA 400 (own colour mode), REGGIE'S PORTRA and KODACHROME II (recipes) and stronger
+white focus peaking as rows 11–13 (FINDINGS.md §11); `--add KEYS` / `--peaking` pick them one by one.
+
+Default output (Classic Chrome only; the camera-confirmed build was `6693177b…`, now `72d00748…` with the
+WHITE BALANCE name fix, FINDINGS.md §11): CLASSIC CHROME as an 11th FILM SIMULATION entry
 with the X-E2 icon and name, its own look data (PRO Neg. Hi back to stock), shown on the shooting-menu line and in
 the playback RAW CONVERSION menu, green menu accent. Options: `--look borrow`, `--no-rawconv`, `--no-green`,
 `--flash FILE`, `--stub FILE` (see `convert.py`). The card expects the camera's flash to hold the v2 build
@@ -33,9 +37,12 @@ in, hold **Fn + press the command dial** while switching on.
 | **features** (menu/UI hooks, look) | `features/menus.py` | shooting menu: FILM SIMULATION entry, icon, row limit, shooting-menu line |
 | | `features/rawconv.py` | playback RAW CONVERSION menu: row, name, icon, film code, module 0x44 mapping |
 | | `features/texts.py` | menu texts in all 35 languages (unused text IDs repointed) |
-| | `features/looks.py`, `cc_look.py` | how the new film simulation renders: own Classic Chrome data, or PRO Neg. Hi's slot |
+| | `features/looks.py`, `cc_look.py` | how the new film simulations render: own Classic Chrome data (+ extra colour modes such as Superia's), or PRO Neg. Hi's slot |
+| | `features/recipes.py` | recipe entries: base film simulation + WB shift, Color, Highlight, Shadow, Sharpness for the picture |
+| | `features/peaking.py` | stronger white focus peaking (tuning bytes) |
 | **validate** | `validate/emu_chain.py`, `emu_card.py`, `emu_look.py` | emulator checks with the real firmware code (unicorn) |
 | | `validate/card_map.py` | the addresses and values the checks expect, taken from the feature modules |
+| | `validate/emu_extras.py` | drawn names, recipes, extra looks, peaking with the real firmware code |
 | | `validate/regression.py` | known-good builds by options |
 
 `re/tools/` keeps the research and live (USB) tools. The old names `tools/crumbs.py` and `tools/cchook.py` still
@@ -59,9 +66,9 @@ that the card applies at the right moment, each entry only if the stock word is 
 
 A new menu (Q menu, bracketing, …) is a new `Part` (in `features/`) added to `Card(base, extensions, look)` in `convert.py`. A new
 film simulation is a new `FilmSim` in `config/film_sims.py` plus its look; the steps, free numbers and checks are in
-`re/FINDINGS.md` §9 and `re/ADDING_FILM_SIMS.md`. Known limits, each asserted in the code: one new film simulation
-per card (row 10 is the only free menu row; a second needs the setting table moved), at most three repointed texts
-(`features/texts.py`), and `OwnLook` holds Classic Chrome's data only.
+`re/FINDINGS.md` §9 and `re/ADDING_FILM_SIMS.md`. Known limits, each asserted in the code: row 10 names through a text
+ID, rows 11+ through drawn ASCII names; extra looks borrow stock selections (no new preset data yet); the RAW
+CONVERSION row is Classic Chrome's only; three spare MODE_FSIMs (2, 4, 6) in all.
 
 ## Checks before a card goes on the camera
 

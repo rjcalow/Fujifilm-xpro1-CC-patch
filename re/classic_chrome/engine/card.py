@@ -39,6 +39,8 @@ class Part:
     def module_words(self): return {}
     def blob2_words(self): return []
     def texts(self): return {}
+    def tuning_bytes(self, fw): return {}           # {parameter ID: (old byte, new byte)}, old = the flashed value
+    def tuning_params(self, fw): return []          # ready u16 entries (id, old hex, new hex)
 
 
 class Card:
@@ -58,7 +60,18 @@ class Card:
         return out
 
     def tuning(self, fw):
-        return self.look.tuning(fw) if self.look else None
+        """Tuning-hook entries of every part (None: the hooks' default, cc_values.PARAMS3)."""
+        from classic_chrome.features import cc_look
+        everyone = self.parts + ([self.look] if self.look else [])
+        params = [e for p in everyone for e in p.tuning_params(fw)]
+        taken = {pid + k for pid, *_ in params for k in (0, 1)}
+        merged = {}
+        for p in everyone:
+            for i, v in p.tuning_bytes(fw).items():
+                assert i not in merged and i not in taken, f'tuning ID {i:#x} changed by two features'
+                merged[i] = v
+        if merged: params += cc_look.db_params(merged, fw.flash_tuning)
+        return params or None
 
     # ---- the installer crumbs.patch calls (extra=...): returns (stage-B routine address, info)
     def install(self, L, asm, bl, start):

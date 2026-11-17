@@ -25,6 +25,7 @@ Addresses are RAM addresses (blob1 loads at 0x774000, blob2 at 0xe0ec80). Sessio
 | Where menu rows get their name + icon | **Found**: tables + row limit in module 0x41 (§6); icon already in the X-Pro1 font |
 | Image pipeline using the new slot's own data | **Done**: 9 fallback instructions → stubs, 2 tables relocated, data in free presets (§6c) |
 | RAW CONVERSION menu (playback) | **Works on the camera** (2026-11-15): CLASSIC CHROME row, converts as Classic Chrome (§6d) |
+| Four looks on the SD card (PR #3: Superia 400, Reggie's Portra, Kodachrome II, focus peaking) | **Works on the camera** (2026-11-17): rows 11–13 next to Classic Chrome; also fixes a WHITE BALANCE menu name bug of the earlier cards (§11) |
 | ACROS (from the X-Pro2) | **Researched** (2026-11-16): colour modes 10–13 of its own, same table scheme and curve format as the X-Pro1, plus an ACROS-only per-ISO processing category; an ACROS-style film sim is feasible, a faithful copy is not (§10) |
 | Other menus (Q menu, bracketing, custom settings), EXIF | Lists located, not patched (§3, §7) |
 
@@ -436,3 +437,43 @@ saved as `x2/blob3.bin`). Nothing about ACROS exists on any EXR-generation body 
    tone ACROS changes (sharpness, noise reduction, the per-ISO rows); (c) check the X-Pro1 for a free tone family
    (none is free: ADDING_FILM_SIMS.md §1) or relocate the family tables; (d) the second-film-sim limits in the
    converter (row 11, more texts).
+
+## 11. Four looks on the SD card (2026-11-17, from PR #3; camera-confirmed 2026-11-17)
+
+`re/classic_chrome/convert.py --four-looks` (card `re/build/sdchain_fourlooks_green/`, ffboot `4261ad85…`) puts PR #3's
+looks next to our Classic Chrome, in RAM at boot, flash untouched. PR #3 itself builds a flashable 3.93
+(`public/FOUR_LOOKS.md`) with Classic Chrome in PRO Neg. Hi's slot; on the card Classic Chrome keeps its own
+entry, so two things are done differently:
+
+| Row | Entry | How (module) |
+|---|---|---|
+| 10 | CLASSIC CHROME | as before: MODE_FSIM 6, own look, RAW CONVERSION (menus, looks, rawconv) |
+| 11 | SUPERIA 400 | MODE_FSIM 2 → **colour mode 8**; the look's stubs answer for it: ASTIA's 3x3 (index 2), PROVIA's 2x2, PROVIA's detail / chroma gain / H-S family (stock fallbacks), PRO Neg. Std's tone (family 3, code 0xfc) (looks.OwnLook extras). PR #3's +4 % / +12 % 2x2 boost needs a second 2x2 preset and selector index; left out. |
+| 12 | REGGIE'S PORTRA | **recipe** on Classic Chrome: AUTO WB R+2/B−4, Color +2, Highlight −1, Shadow −1, Sharpness −2 |
+| 13 | KODACHROME II | **recipe** on PRO Neg. Std: AUTO WB R+1/B−2, Color −2, Highlight +1, Shadow +2, Sharpness +2 |
+
+* **Recipes** (features/recipes.py): PR #3's two override points: the shooting-settings copy into the outgoing
+  message (blob2 0xf79434) and the compact capture exporter's return (blob1 0x9b7610). PR #3 gives each recipe its own
+  MODE_FSIM; the X-Pro1 has three spare ones (2, 4, 6), so on the card a recipe keeps its base's MODE_FSIM and is
+  recognised by its stored menu value (settings getter 0x793048(0x3d, 0), a plain read of the settings bank).
+  Stored values: Superia 14, Reggie's Portra 15, Kodachrome II 10. MODE_FSIM 4 stays free (ACROS).
+* **Rows 11–13** need the setting-0x3d conversion table copied with the extra rows (pointer 0x78ba10[0x3d]), and their
+  names are drawn from ASCII strings by PR #3's DRAW stub on the name-draw call 0x147c798 (same text in every
+  language). The shooting-menu line shows the base's icon for a recipe (shared MODE_FSIM).
+* **Focus peaking** (features/peaking.py): tuning bytes 0xc88c 40→48, 0xc8a5 / 0xc8a7 64→120.
+* **Bug fixed on every card**: the FILM SIMULATION row-name table 0x1483c20 has 10 entries; its word 10
+  (0x1483c48) is **entry 0 of the WHITE BALANCE name table** (COLOR TEMPERATURE, FINE, SHADE, …; entry 0 = AUTO,
+  stock 0 = no name). The earlier cards (and PR #3's 3.93) wrote Classic Chrome's text ID there (visible effect on the
+  WB menu not confirmed on the camera; the four-looks card's WB menu is normal, 2026-11-17). The table is now
+  copied with the new rows and its pointer (movw/movt 0x147c750/54) repointed; 0x1483c48 stays 0. All card hashes
+  changed (validate/regression.py).
+* **Checks** (`convert.py --four-looks --verify`, ALL OK): emu_chain; emu_card with 4 entries (lists, conversion
+  engine for rows 10–13, name table copy + WB table untouched, icon tables, row maps, draw call); emu_look (Classic
+  Chrome's look, peaking bytes); emu_extras: drawn names through the stock lookup + DRAW (glyphs = text), both
+  recipes through the real message producer and exporter (exactly their 7 values, 12 other selections unchanged,
+  3 WB modes, MODE_FSIM guard), Superia's colour mode through the real 3x3 / 2x2 / chroma-gain / tone functions
+  (= ASTIA / PROVIA / PROVIA / PRO Neg. Std), every stock colour mode as on stock firmware, Classic Chrome still
+  curve 38, peaking bytes from the real tuning hook.
+* **Camera (user, 2026-11-17)**: rows 10–13 shown with names and icons, each selectable and kept; WHITE BALANCE menu
+  normal; the four entries give four different pictures. Not yet checked: colour of each against its reference,
+  focus-peaking strength, RAW CONVERSION of a recipe picture (gives the base look; there is no recipe row).

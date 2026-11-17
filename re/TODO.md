@@ -123,3 +123,7 @@ Versions/rollback rules (no official downgrade or re-install; label 3.83+; rollb
 Setup reminders: Ghidra 12.2 + JDK 25 need re-downloading (`tools/README_ghidra.md`); decompiled C is in
 `decompiled/*.c.gz`; unpack with `tools/unpack.sh`; verify builds with `tools/verify_ccswap.py`; capstone is not
 installed system-wide (use a venv).
+- [x] (2026-11-17, menus + pictures OK) Camera test of `re/build/sdchain_fourlooks_green/` (4261ad85…) and the fixed default card
+      `re/build/sdchain_cc11wb_green/` (72d00748…): rows 10–13, names, icons, WHITE BALANCE AUTO row without a name,
+      a picture per entry (FINDINGS §11). Then: Superia's 2x2 boost (second 2x2 preset + selector), RAW CONVERSION
+      rows for the new entries.

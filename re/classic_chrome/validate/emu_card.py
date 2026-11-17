@@ -23,8 +23,14 @@ from classic_chrome.features import texts as uitext
 import card_map
 
 dat, boot, W, flash = sys.argv[1:5]
+# optional 5th argument: the card's film simulations in row order (convert.py: --sim + --add), default Classic Chrome
+from dataclasses import replace
+from classic_chrome.config.film_sims import SIMS
+SIMS_ON = [replace(SIMS[k], row=10 + n) for n, k in enumerate((sys.argv[5] if len(sys.argv) > 5 else 'classic_chrome').split(','))]
+MULTI = len(SIMS_ON) > 1
 img = bytes(x ^ 0xff for x in open(dat, 'rb').read())
 F = card_map.for_image(img)
+from classic_chrome.features import menus as M
 fimg = bytes(x ^ 0xff for x in open(flash, 'rb').read())
 ffboot = open(boot, 'rb').read()
 m = ffboot.find(struct.pack('<I', 0x4e494843)); _, po, pl, ol, crc = struct.unpack('<5I', ffboot[m - 0x14:m])
@@ -68,17 +74,19 @@ diff = sorted({(i & ~3) + 0x774000 for i in range(len(b1)) if now[i] != b1[i]})
 from keystone import Ks, KS_ARCH_ARM, KS_MODE_ARM
 ks = Ks(KS_ARCH_ARM, KS_MODE_ARM); bl = lambda frm, to: struct.unpack('<I', bytes(ks.asm(f'bl {to:#x}', frm)[0]))[0]
 L = bytes(mu.mem_read(0, 0x10000))
-# locate the fsim11 stage table in the loader filler (markers are stored as {addr, old, new})
-tab = L.find(struct.pack('<3I', F.ROW10, F.END, 13)); marks = []
+# locate the card's stage table in the loader filler (markers {addr, old, new}; the base part's come first:
+# one entry: conversion-table row 10 (2 words) + 2 menu nodes; more entries: conversion-table pointer + 2 nodes)
+node0 = L.find(struct.pack('<2I', *M.NODES[0])); tab = node0 - (12 if MULTI else 24); marks = []
 while W32(L, tab): marks.append(struct.unpack('<3I', L[tab:tab + 12])); tab += 12
 want = sorted([0x857a98, H.SITE_LANG] + [x for x, _ in H.DB_SITES] + [a for a, _, _ in marks])
-check('stage B changed exactly: Ver3.89 marker + cchook sites + fsim11 table', diff == want, str([hex(x) for x in diff]))
-RC = len(marks) == 8                                                   # --rawconv: two more markers (list, table pointer)
-check('fsim11 table applied (every entry holds its new word)', all(W32(now, a - 0x774000) == new for a, _, new in marks)
-      and len(marks) in (6, 8))
-LIST = marks[2][2]
-lst = [W32(L, LIST + 4 * i) for i in range(24)]
-check('new menu list = stock rows + row 10', lst == sum(([r, 0] for r in F.STOCK_ROWS + [10, F.END]), []))
+check('stage B changed exactly: Ver3.89 marker + cchook sites + the card table', diff == want, str([hex(x) for x in diff]))
+RC = any(a == F.RC_NODE for a, _, _ in marks)                          # --rawconv: list + table pointer
+check('card table applied (every entry holds its new word)', all(W32(now, a - 0x774000) == new for a, _, new in marks)
+      and (marks[0][0] == (M.CONV_PTR if MULTI else F.ROW10)))
+LIST = marks[1 if MULTI else 2][2]
+ROWS_NEW = [s.row for s in SIMS_ON]
+lst = [W32(L, LIST + 4 * i) for i in range(2 * (11 + len(SIMS_ON)))]
+check(f'new menu list = stock rows + rows {ROWS_NEW}', lst == sum(([r, 0] for r in F.STOCK_ROWS + ROWS_NEW + [F.END]), []))
 
 def call(fn, regs, sp=0x1e00000, stop=STOP, lr=STOP):
     mu.reg_write(UC_ARM_REG_CPSR, 0x1d3); mu.reg_write(UC_ARM_REG_SP, sp); mu.reg_write(UC_ARM_REG_LR, lr)
@@ -96,6 +104,11 @@ check('stored 13 → MODE_FSIM 6', conv(13, 1, 3) == 6)
 check('menu row 10 → stored 13; MODE_FSIM 6 → row 10', conv(10, 0, 1) == 13 and conv(6, 3, 0) == 10)
 check('ten stock rows unchanged', [conv(r, 0, 3) for r in range(10)] == [0, 3, 1, 8, 9, 10, 7, 11, 12, 5]
       and [conv(r, 0, 1) for r in range(10)] == [0, 2, 1, 3, 4, 5, 6, 11, 12, 7])
+if MULTI:
+    check('rows 11+: row → stored → MODE_FSIM, and back to the row for looks',
+          all(conv(s.row, 0, 1) == s.stored and conv(s.stored, 1, 3) == s.mode_fsim and conv(s.stored, 1, 0) == s.row
+              and (s.is_recipe or conv(s.mode_fsim, 3, 0) == s.row) for s in SIMS_ON),
+          str([(s.key, conv(s.row, 0, 1), conv(s.stored, 1, 3)) for s in SIMS_ON]))
 
 # ---- 3 language hook
 st['phase'] = 'lang'; bad = []
@@ -135,19 +148,33 @@ got = bytes(mu.mem_read(F.M41_BASE, len(m41)))
 ch = sorted({(i & ~3) + F.M41_BASE for i in range(len(m41)) if got[i] != m41[i]})
 check('module hook: reaches the module init with lr = 0x9717bc, r0-r5 and sp kept',
       r[0] == 'ok' and r[1] == regs and r[2] and r[3] == F.SITE_INIT + 4, str(r[:1] + r[3:]))
-icon = {k: W32(L, (F.MOD41[2][2] if False else 0) + 0) for k in ()}
-want = {a: new for a, _, new in F.MOD41 if not isinstance(new, str)}
-mod41 = [a for a, _, _ in F.MOD41] + ([F.RC_CAP, F.RC_MOVW, F.RC_MOVT, F.RC_ICON_FIELD] if RC else [])
-check(f'module hook: exactly the {len(mod41)} module words changed', ch == sorted(mod41), str([hex(x) for x in ch]))
-check('module hook: name entry 819, row limit cmp r4,#10, fsim 6 → row 10 in both row maps', all(W32(got, a - F.M41_BASE) == v for a, v in want.items()))
-iA, iB = W32(got, 0x14299fc - F.M41_BASE), W32(got, 0x1429a00 - F.M41_BASE)
-tA = [W32(L, iA + 4 * i) for i in range(11)]; tB = [W32(L, iB + 4 * i) for i in range(11)]
-check('module hook: both FILM SIMULATION records → 11-entry icon tables (stock + 1215)',
-      W32(got, 0x142bd98 - F.M41_BASE) == iA and W32(got, 0x142bd9c - F.M41_BASE) == iB
-      and tA == [W32(m41, 0x142aa4c - F.M41_BASE + 4 * i) for i in range(10)] + [1215]
-      and tB == [W32(m41, 0x1427320 - F.M41_BASE + 4 * i) for i in range(10)] + [1215])
-check('module hook: fsim → row maps give row 10 for fsim 6, stock rows otherwise',
-      all(list(got[t - F.M41_BASE:t - F.M41_BASE + 13]) == [0, 2, 0, 1, 5, 9, 10, 5, 7, 6, 8, 4, 3] for t in (0x1474e7c, 0x1474e3c)))
+G = lambda a: W32(got, a - F.M41_BASE)
+looks_on = [s for s in SIMS_ON if not s.is_recipe]
+rowmap_words = sorted({(t + s.mode_fsim) & ~3 for t in M.ROW_MAPS for s in looks_on})
+mod41 = [M.NAME_MOVW, M.NAME_MOVT, M.ROW_CAP] + [f for _, fl in M.ICON_TABS.values() for f in fl] + rowmap_words \
+    + ([M.DRAW_SITE] if MULTI else []) + ([F.RC_CAP, F.RC_MOVW, F.RC_MOVT, F.RC_ICON_FIELD] if RC else [])
+check(f'module hook: exactly the {len(mod41)} module words changed (WHITE BALANCE names 0x1483c48 untouched)',
+      ch == sorted(mod41) and 0x1483c48 not in ch, str([hex(x) for x in ch]))
+dec = lambda w: ((w >> 4) & 0xf000) | (w & 0xfff)
+NT = dec(G(M.NAME_MOVW)) | dec(G(M.NAME_MOVT)) << 16
+names = [W32(L, NT + 4 * i) for i in range(10 + len(SIMS_ON))]
+drawn_ok = all(L[names[s.row]:names[s.row] + len(s.name) + 1] == s.name.encode() + b'\0' for s in SIMS_ON if s.row > 10)
+check(f'module hook: name table copied (10 stock + 819{" + drawn names" if MULTI else ""}), row limit cmp r4,#{ROWS_NEW[-1]}',
+      names[:10] == [W32(m41, M.NAME_TAB - F.M41_BASE + 4 * i) for i in range(10)] and names[10] == F.NAME_ID
+      and drawn_ok and G(M.ROW_CAP) == 0xe3540000 | ROWS_NEW[-1], str(names[10:]))
+iA, iB = G(0x14299fc), G(0x1429a00)
+n = 10 + len(SIMS_ON)
+tA = [W32(L, iA + 4 * i) for i in range(n)]; tB = [W32(L, iB + 4 * i) for i in range(n)]
+check(f'module hook: both FILM SIMULATION records → {n}-entry icon tables (stock + new rows\' icons)',
+      G(0x142bd98) == iA and G(0x142bd9c) == iB
+      and tA == [W32(m41, 0x142aa4c - F.M41_BASE + 4 * i) for i in range(10)] + [s.icon_ab[0] for s in SIMS_ON]
+      and tB == [W32(m41, 0x1427320 - F.M41_BASE + 4 * i) for i in range(10)] + [s.icon_ab[1] for s in SIMS_ON])
+exp_map = [0, 2, 0, 1, 5, 9, 10, 5, 7, 6, 8, 4, 3]
+for s in looks_on: exp_map[s.mode_fsim] = s.row
+check('module hook: MODE_FSIM → row maps give the new looks\' rows, stock rows otherwise',
+      all(list(got[t - F.M41_BASE:t - F.M41_BASE + 13]) == exp_map for t in M.ROW_MAPS), str(exp_map))
+if MULTI:
+    check('module hook: name draw call → the card\'s DRAW stub', G(M.DRAW_SITE) != W32(m41, M.DRAW_SITE - F.M41_BASE))
 mu.mem_write(F.M41_BASE, m41)
 r = call(F.SITE_INIT, [1, 2, 3, 0x14c0040, 5, 6], stop=0x14c0040)
 check('module hook: other init → straight through, nothing changed',
