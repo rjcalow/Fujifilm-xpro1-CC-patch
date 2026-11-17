@@ -10,7 +10,8 @@
 #   --cclook: with --fsim11, Classic Chrome in its own presets (3x3 17/18, 2x2 12, tone family 5) and PRO Neg. Hi back to
 #             stock (cclook.py); --flash FILE = the flashed firmware whose tuning values are expected (default ptpdebug_385)
 #   --rawconv: with --fsim11, CLASSIC CHROME also in the RAW CONVERSION menu (film code 8; fsim11.py rawconv)
-#   --fsim11: with --crumbs --cc, Classic Chrome as an 11th FILM SIMULATION entry (icon + name), PRO Neg. Hi keeps its name (fsim11.py)
+#   --fsim11: with --crumbs --cc, Classic Chrome as an 11th FILM SIMULATION entry (icon + name), PRO Neg. Hi keeps its name
+#             (built by the converter's modules, re/classic_chrome/; same card as convert.py with the matching options)
 #   --cc: with --crumbs, Classic Chrome v3 chroma values + menu name CLASSIC CHROME through run-time hooks (cchook.py);
 #         the flash firmware must be a v2 build (ccswap_v2 or ptpdebug_385)
 #   --hook: production; patch the loaded firmware in RAM before it starts (loader_hook.py; default: Ver3.89 marker)
@@ -32,18 +33,21 @@ assert hashlib.sha256(loader).hexdigest() == 'ff31ef67c7b024a33ea3757cbff3d95646
 if crumbs:
     sys.path.insert(0, os.path.dirname(__file__)); import crumbs as crumbs_mod
     kw = {}
-    if fsim11:                                     # Classic Chrome as its own menu entry (fsim11.py); needs --cc
+    if fsim11:                                     # Classic Chrome as its own menu entry; needs --cc
         assert cc, '--fsim11 needs --cc (it extends the v3 language hook)'
-        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'public'))
-        import fsim11
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+        from classic_chrome.engine.firmware import Firmware
+        from classic_chrome.engine.card import Card
+        from classic_chrome.config.film_sims import CLASSIC_CHROME
+        from classic_chrome.features import menus, rawconv as rc, looks, texts
+        fw = Firmware(dat, flash); sims = [CLASSIC_CHROME]
+        card = Card(menus.FilmSimMenu(sims), [rc.RawConversion(sims)] if rawconv else [],
+                    looks.LOOKS['own' if cclook_on else 'borrow'](CLASSIC_CHROME))
+        card.check(fw)
         def _fsim11(L, asm, bl):
             used = max(i for i in range(0xa400, 0xc000) if L[i] != 0xff)
-            return fsim11.install(L, asm, bl, img, used + 1, look='own' if cclook_on else 'borrow', rawconv=rawconv)
-        kw = {'cc_lang': fsim11.lang(img), 'extra': _fsim11}
-        if cclook_on:                                  # own Classic Chrome data + PRO Neg. Hi restore (cclook.py)
-            import cclook
-            fl = bytes(x ^ 0xff for x in open(flash, 'rb').read()); A, N = cclook.DB_FILE, cclook.DB_LEN
-            kw['cc_db'] = cclook.db_params(cclook.db_bytes(img[A:A + N], fl[A:A + N]), fl[A:A + N])
+            return card.install(L, asm, bl, used + 1)
+        kw = {'cc_lang': texts.lang(fw, card.texts()), 'extra': _fsim11, 'cc_db': card.tuning(fw)}
     L = bytearray(loader); info = crumbs_mod.patch(L, img[0x8025c:0x8025c + 0xd7a0], uiswap=uiswap, cc_img=img if cc else None, **kw); loader = bytes(L)
     print('crumbs:', info)
     stub_check = open(stub_path, 'rb').read()

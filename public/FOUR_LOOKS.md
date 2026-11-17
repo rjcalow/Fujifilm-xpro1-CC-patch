@@ -47,4 +47,6 @@ python re/tools/emu_four_looks.py FPUPDATE.DAT four-looks/FPUPDATE.DAT
 
 **Flashing writes the camera's internal firmware and can brick the body.** Use a fully charged battery. Copy the generated `FPUPDATE.DAT` to the root of a camera-formatted SD card. Hold **DISP/BACK** while powering on, choose **BODY**, and check the target is **3.93**. Leave the battery and card in place until the camera reports completion. Power off, then start normally and open the shooting Film Simulation menu. [Fujifilm's update instructions](https://www.fujifilm-x.com/global/support/download/firmware/cameras/x-pro1/)
 
+**Don't boot the project's SD-card builds (`re/classic_chrome/convert.py`) on a camera running 3.93.** They expect the flashed v2 debug build; on 3.93 most of their RAM patches would find changed values and skip themselves, leaving a partly applied state that has not been tested.
+
 If the camera still boots and its updater works, the project's stock-relabel option can prepare a return to stock. Select PROVIA before rollback. The stock updater needs a version label above the installed one, for example `3.94` after `3.93`. A camera that cannot start its updater may need service. [Stock-relabel instructions](README.md#install-same-procedure-as-an-official-update)

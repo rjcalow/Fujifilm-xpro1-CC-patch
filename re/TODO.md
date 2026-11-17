@@ -112,6 +112,9 @@ Versions/rollback rules (no official downgrade or re-install; label 3.83+; rollb
       film code 9, text IDs + a glyph in the font for the icon. Look: ACROS is monochrome — start from MONO's
       colour mode / tone family (6) and donate a tone curve slot (X-T2/X-Pro2 ACROS curve + grain-free), check
       whether MONO's +Ye/R/G filter variants (MODE_FSIM 8–10) can be shared. Sources: X-T2 firmware tables.
+      (2026-11-16) X-Pro2 researched, FINDINGS §10: ACROS = colour modes 10–13, same table/curve format as the
+      X-Pro1, plus an ACROS-only per-ISO processing stage the X-Pro1 lacks → ACROS-style sim feasible, exact copy not.
+      Next: decode the X-Pro2 tone selection (ACROS curve numbers), diff ACROS vs MONO tables.
 - [ ] X-E1 (same EXR Pro) may take the same patch with its own offsets (fujimod has an xe1-271 recipe too).
 - [ ] Make `tools/cc_port.py` / `build_ccswap.py` take input paths (they assume the old scratch layout `work/`, `x4/`).
 - [ ] Share findings with fujimod / FujiHack (version-check / "stock updater acceptance", SD trigger from the service

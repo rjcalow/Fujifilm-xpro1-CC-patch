@@ -1118,3 +1118,55 @@ X-Pro1 blob1 now decompiled too: `decompiled/xpro1_blob1_0x774000.c.gz` (Ghidra 
 * (2026-11-15) **Camera-confirmed** (user): `sdchain_cc11rc_green` shows CLASSIC CHROME in the shooting menu and the
   playback RAW CONVERSION menu; conversion works. FINDINGS §9 = instructions for an AI agent adding further film
   sims. TODO: Classic Chrome accuracy test vs a real CC body.
+
+## Session 2026-11-16: modular converter
+* `re/classic_chrome/convert.py` (+ firmware, film_sims, menus, rawconv, looks, texts, card, sdcard modules): official
+  3.82 file → complete SD-boot card. SD output only (user's choice; a flashable file would need code space in flash,
+  not researched). Byte-identical to build_sdchain.py: default 6693177b… (camera-confirmed card), --no-rawconv
+  8d8364dc…, --look borrow 127c321c…, --no-green b8547c4b…. Engine `card.py` generalises fsim11.install (any parts,
+  any module list); layout order kept so the hashes match. Limits asserted: one new film sim (row 10), ≤ 3 texts,
+  OwnLook = Classic Chrome data. fsim11.py kept for build_sdchain/emulators.
+* (2026-11-16, later) **Converter split into engine / config / features / validate** (`re/classic_chrome/`, README).
+  Moved with git history: tools/crumbs.py → engine/chain.py, cchook.py → engine/hooks.py, cclook.py plan →
+  features/cc_look.py (live tool stays tools/cclook.py), emu_crumbs/emu_fsim11/emu_cclook → validate/emu_chain/
+  emu_card/emu_look (+ card_map.py for their constants); tools/fsim11.py removed (build_sdchain --fsim11 now builds
+  through the package); PARAMS3 → config/cc_values.py (build_cc3 imports it); uitext's text-table finder →
+  features/texts.py. tools/crumbs.py and cchook.py are now pointers into the package. `verify.py` / `convert.py
+  --verify` runs all three emulator checks + regression.KNOWN. Checked: converter 4 variants ALL OK and identical
+  (6693177b / 8d8364dc / 127c321c / b8547c4b); build_sdchain --cc 8436762b, --fsim11 full 6693177b, borrow
+  127c321c identical; romdump card = reference build; emu_cchook, emu_dumpcard ALL OK.
+
+## Session 2026-11-16: ACROS in the X-Pro2 firmware
+* FWUP0008_xpro2.DAT == FWUP0008.DAT (same SHA-256). Unpacked to re/x2/ (blob1 0xa51000, blob2 0x1263000,
+  blob3 = file 0x7d025c → RAM 0x18e3000, 0x6b0000).
+* Film sim → colour mode: blob2 0x13fab48 (jump table, stores struct +0x52): 0..12 as X-Pro1, 13 CC → 8,
+  14 ACROS → 10, 15 +R → 12, 16 +Ye → 11, 17 +G → 13 (9 unused). ACROS flag (cm 10–13) → struct +0x53 (0x13fb810).
+* Parameter area: file 0xc025c, 0xd0000 B → RAM 0x2668000 (ptr 0xea7eb8, loader 0xb94e0c), getters 0xb94708 (byte,
+  map 0xb94684: ≥0x160000 banked via 0xbac930), 0xb94ab4, u16 0xb94ac4; marker IDs 0x202/0x203 = 0xaa55.
+* Colour-mode tables [row][14] at blob2 0x17af52c, 0x17af66c, 0x17b031c, 0x17b048c, 0x17b059c, 0x17b0454,
+  0x17b0854, 0x17b094c (users 0x13eb0c8 … 0x13f0c0c). Category switches on cm−2: 0x13ebbcc (0 colour, 1 MONO/SEPIA,
+  2 ACROS), 0x13f0814 (MONO → [+0x56], ACROS 2, ACROS+filter 3); per-ISO tables 0x17b06d0 [cat*15+iso],
+  0x17b06b8 [cat*4], 0x17b088c [cat*15+iso], 0x17b0904 [cat*9+x].
+* Tone curves: blob1 0xe27970, 48 × 0x48 (count word 0x30 before), same format as X-Pro1 0x80b700 (29 entries).
+  Identical X-Pro2/X-Pro1 curves: 41 = 0 / 26, 45 = 28. X-E2 CC curve 38 not present.
+* Not yet: which curve numbers ACROS uses (decode the X-Pro2 tone-selection code), full ACROS-vs-MONO table diff.
+  FINDINGS §10.
+
+## 2026-11-17: PR #3 (simonjardine, "four-look 3.93 patcher") tested, not merged
+* Flashable 3.93 from official 3.82: CC in PRO Neg. Hi's slot (v2 curve + v3 chroma), SUPERIA 400 = fsim 6 row 10
+  (cclook stubs + ASTIA 3x3 / PRO Neg. Std curve 26 / boosted PROVIA 2x2), REGGIE'S PORTRA (fsim 2) and
+  KODACHROME II (fsim 4) = setting overrides at the capture copy (0xf79434) and exporter (0x9b7610), focus-peaking
+  gains 0xc88c 40→48, 0xc8a5/0xc8a7 64→120. Code/data placed in nine duplicate read-only blob1 option lists after
+  repointing their single reference to the twin. Recompresses blob1 AND blob2.
+* Checked here: build reproduces 540766f0…; its emulator check passes (unicorn 2.1.4); container checksums OK,
+  label 3.93; loader, section 0, modules 0x42–0x44 untouched; no movw/movt or module 0x42–0x44 reference into any
+  reused region (only pointers to the neighbouring nodes); all nine regions unchanged in the running camera's RAM dump.
+* Not covered: flashing/boot on the camera (PR says the owner reports it works), colour accuracy, RAW conversion of
+  the new entries (no rawconv support), recovery. Drops the USB debug ops (built from stock, not ptpdebug_385).
+  Imports tools/fsim11.py, removed by the uncommitted converter restructure → needs adapting before both can land.
+* (2026-11-17) PR #3 merged into main by the owner (b5a6e93); Converter-v1 (f9e25f8) merged after it. The fork's
+  `four_looks.py` imports `fsim11`, removed by the restructure → `re/tools/fsim11.py` is back as a compatibility
+  module serving the old names from the package (no card code). Checked on the merged tree: fork build 540766f0…
+  + emu_four_looks PASS; converter 4 cards identical + verify ALL OK; build_sdchain 8436762b / 6693177b /
+  127c321c identical; romdump reference build + emu_dumpcard ALL OK; emu_cchook ALL OK. FOUR_LOOKS.md: warning not
+  to SD-boot our cards on 3.93.

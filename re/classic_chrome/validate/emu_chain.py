@@ -1,5 +1,5 @@
 # Emulator test for the breadcrumb SD card (build_sdchain.py --crumbs with the chain_crumbs.bin stub).
-# usage: emu_crumbs.py <FPUPDATE.DAT> <ffboot.bin> <re/work dir>
+# usage: emu_chain.py <FPUPDATE.DAT> <ffboot.bin> <re/work dir>   (or: classic_chrome/validate.py)
 #   1 stub: run ffboot.bin from 0 → it must inflate the loader, write the header, the boot-ROM snapshot, progress
 #     0x01/0x02/0x03 and the drained-abort fields, then jump to 0.
 #   2 loader side, clean: memory as the stock loader leaves it, start at its final jump 0x405c → progress 0x10,
@@ -10,8 +10,10 @@
 import ctypes, os, struct, sys, zlib
 from unicorn import Uc, UcError, UC_ARCH_ARM, UC_MODE_ARM, UC_HOOK_CODE, UC_PROT_ALL
 from unicorn.arm_const import *
-sys.path.insert(0, os.path.dirname(__file__))
-import crumbs as C, lz, uicolor as UI
+HERE = os.path.dirname(os.path.abspath(__file__))
+for _p in ('..', '../..', '../../tools', '../../../public'): sys.path.insert(0, os.path.normpath(os.path.join(HERE, _p)))
+from classic_chrome.engine import chain as C
+import lz, uicolor as UI
 
 dat, boot, W = sys.argv[1:4]
 img = bytes(x ^ 0xff for x in open(dat, 'rb').read())

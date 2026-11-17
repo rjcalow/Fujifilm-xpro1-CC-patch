@@ -19,13 +19,8 @@ sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, '..', '..', 'pub
 import xpro1_cc_patch as P
 import uiname
 
-# (parameter ID, v2 bytes, v3 bytes): 13-bit signed, 0x400 = 1.0, little endian
-PARAMS3 = [
-    (0xe3c9, 'd603', 'ae02'),   # 2x2 m00 (Cr gain)   0.959 → 0.670
-    (0xe3cd, '2300', 'e11f'),   # 2x2 m01 (Cb → Cr)   0.034 → -0.030
-    (0xe3cf, '1000', '2400'),   # 2x2 m10 (Cr → Cb)   0.016 → 0.035
-    (0xe3cb, '4404', '0a04'),   # 2x2 m11 (Cb gain)   1.066 → 1.010
-]
+sys.path.insert(0, os.path.join(HERE, '..'))
+from classic_chrome.config.cc_values import PARAMS3   # (parameter ID, v2 bytes, v3 bytes)
 
 
 def build(src, dst, version='3.86', name=uiname.NEW, rename=True):

@@ -6,6 +6,12 @@ and then from the SD-boot cards (§6b, §6d), which work on the camera. **To add
 should start at §9.**
 Addresses are RAM addresses (blob1 loads at 0x774000, blob2 at 0xe0ec80). Session detail: `NOTES.md` (2026-11-12 night onward).
 
+> **Files moved 2026-11-16** (sections below keep the old names as history): `tools/fsim11.py` →
+> `classic_chrome/features/menus.py` + `rawconv.py`; `tools/cclook.py`'s plan → `classic_chrome/features/cc_look.py`
+> (the live USB tool stays `tools/cclook.py`); `tools/crumbs.py` / `cchook.py` → `classic_chrome/engine/chain.py` /
+> `hooks.py` (the old names still import); `tools/emu_crumbs.py` / `emu_fsim11.py` / `emu_cclook.py` →
+> `classic_chrome/validate/emu_chain.py` / `emu_card.py` / `emu_look.py`, all run by `classic_chrome/verify.py`.
+
 ## 1. Summary
 
 | Part | State |
@@ -19,6 +25,7 @@ Addresses are RAM addresses (blob1 loads at 0x774000, blob2 at 0xe0ec80). Sessio
 | Where menu rows get their name + icon | **Found**: tables + row limit in module 0x41 (§6); icon already in the X-Pro1 font |
 | Image pipeline using the new slot's own data | **Done**: 9 fallback instructions → stubs, 2 tables relocated, data in free presets (§6c) |
 | RAW CONVERSION menu (playback) | **Works on the camera** (2026-11-15): CLASSIC CHROME row, converts as Classic Chrome (§6d) |
+| ACROS (from the X-Pro2) | **Researched** (2026-11-16): colour modes 10–13 of its own, same table scheme and curve format as the X-Pro1, plus an ACROS-only per-ISO processing category; an ACROS-style film sim is feasible, a faithful copy is not (§10) |
 | Other menus (Q menu, bracketing, custom settings), EXIF | Lists located, not patched (§3, §7) |
 
 ## 2. Free film-simulation slots
@@ -247,21 +254,23 @@ and the conversion works.**
 |---|---|
 | `tools/uitext.py` | print UI text by ID, any language |
 | `tools/fsimslot.py` | live 11th-row test: `apply` / `restore` / `status` (row, name, icon tables, row maps, one code poke) |
-| `tools/fsim11.py`, `build_sdchain.py --fsim11` | the same changes on the SD-boot card |
-| `tools/emu_fsim11.py` | emulator test of the card's hooks (real firmware code) |
+| `classic_chrome/features/menus.py`, `build_sdchain.py --fsim11` | the same changes on the SD-boot card (was `tools/fsim11.py`) |
+| `classic_chrome/validate/emu_card.py` | emulator test of the card's hooks (real firmware code; was `tools/emu_fsim11.py`) |
 | `tools/fontswap.py` | live: load the X-E2 font in RAM (research; not needed for the icon) |
-| `tools/cclook.py`, `build_sdchain.py --cclook` | own look data for colour mode 1 + PRO Neg. Hi restore: live `apply` / `restore` / `status`, and the card |
-| `tools/emu_cclook.py` | emulator test of the look patches (tuning hook, HOOK_B2, real pipeline selection functions) |
+| `tools/cclook.py` (live), `classic_chrome/features/cc_look.py` (plan), `build_sdchain.py --cclook` | own look data for colour mode 1 + PRO Neg. Hi restore: live `apply` / `restore` / `status`, and the card |
+| `classic_chrome/validate/emu_look.py` | emulator test of the look patches (tuning hook, HOOK_B2, real pipeline selection functions) |
 | `tools/uitextmark.py` | live: label text IDs with "#ID" to see what a screen draws; `restore` removes them |
 | `tools/fsimlog.py` | live RAM-only call logger (`install` / `read` / `remove`): ring of {tag, caller, r0, r1, 4 loaded values}; how the RAW-conversion consumer was found (§6d, §9.5) |
-| `tools/fsim11.py rawconv`, `build_sdchain.py --rawconv` | the RAW CONVERSION row on the card (§6d) |
+| `classic_chrome/features/rawconv.py`, `build_sdchain.py --rawconv` | the RAW CONVERSION row on the card (§6d) |
+| `classic_chrome/convert.py` | **the converter**: official firmware → complete SD-boot card, one module per feature (README there) |
+| `classic_chrome/verify.py` (`convert.py --verify`) | all emulator checks + the known-good builds (`validate/regression.py`) on a built card |
 | `decompiled/xpro1_blob1_0x774000.c.gz`, `xpro1_mod41_0x1420000.c.gz` | X-Pro1 blob1 and module 0x41 decompiles (Ghidra 12.1.4 + JDK 21 in `~/opt`) |
 
 ## 9. Instructions for an AI agent: adding another film simulation
 
 Read this whole section, then `ADDING_FILM_SIMS.md` (the numbers and tables), then the parts of §2–§6d and
 `NOTES.md` that cover the place you are changing. Classic Chrome (film sim 6) is the worked example for every step;
-copy its code (`tools/fsim11.py`, `tools/cclook.py`) rather than inventing a new mechanism.
+copy its code (`classic_chrome/features/menus.py`, `rawconv.py`, `cc_look.py`) rather than inventing a new mechanism.
 
 ### 9.1 Rules from the camera owner (non-negotiable)
 
@@ -299,7 +308,9 @@ copy its code (`tools/fsim11.py`, `tools/cclook.py`) rather than inventing a new
    before writing. Never patch a word you have not read.
 3. **Live test over USB** for anything visible (menu rows, names, icons): small `apply` / `restore` / `status` tool
    like `tools/fsimslot.py`, data in free loader filler (check it is all 0xff first). Tell the user what changes.
-4. **Card code**, extending `tools/fsim11.py` (or a sibling module with the same structure):
+4. **Card code** in the converter `re/classic_chrome/` (README there): a new film simulation is a `FilmSim` in
+   `film_sims.py` (+ its look in `looks.py`); a new menu or place is a new `card.Part` module added in `convert.py`.
+   The engine (`engine/card.py`) routes each change by where it lives:
    * blob1 data (setting tables, menu lists, pointers) → stage-B markers (applied before blob1 runs);
    * module code/data → the module-init hook (blob1 0x9717b8 `blx r3`): one patch table per module, applied when
      `r3` is that module's first init (0x41: 0x1430170, 0x44: 0x15c05ec). Modules are streamed in later; patching
@@ -309,12 +320,13 @@ copy its code (`tools/fsim11.py`, `tools/cclook.py`) rather than inventing a new
    * new code → small stubs in the filler; a stock branch to "default/fallback" is the usual place to divert
      (`b`/`bne`/`movne` → stub that handles the new value and jumps back to the stock target otherwise).
    Filler for the card: `0xa400`–`0xc000` (`install` asserts this). Live tools use `0xb800`–`0xd010`; don't mix.
-5. **Emulator checks** (real firmware code, unicorn): extend `tools/emu_fsim11.py` / `emu_cclook.py` with the new
-   value *and* the stock values (stock must be unchanged). Run all three on the new card:
-   `emu_crumbs.py ../FPUPDATE.DAT <ffboot> work`, `emu_fsim11.py` and `emu_cclook.py ../FPUPDATE.DAT <ffboot> work
-   build/ptpdebug_385/FPUPDATE.DAT`. All must print ALL OK.
-6. **Regression**: `build_sdchain.py ../FPUPDATE.DAT work/chain/chain_crumbs.bin <out> --crumbs --uiswap --cc`
-   must still give ffboot `8436762b…`. New option → its own flag, off by default.
+5. **Emulator checks** (real firmware code, unicorn): extend `classic_chrome/validate/emu_card.py` / `emu_look.py`
+   (constants in `validate/card_map.py`) with the new value *and* the stock values (stock must be unchanged). Run
+   them all with `classic_chrome/verify.py ../FPUPDATE.DAT <card dir> [converter options]` or `convert.py … --verify`:
+   it must end with ALL OK.
+6. **Regression**: `classic_chrome/convert.py ../FPUPDATE.DAT <out> --verify` checks ffboot against the known-good
+   builds (`classic_chrome/validate/regression.py`: default `6693177b…` and three variants); `build_sdchain.py ../FPUPDATE.DAT work/chain/chain_crumbs.bin
+   <out> --crumbs --uiswap --cc` must still give `8436762b…`. New feature → its own option, off until camera-tested.
 7. **Card**: build into `build/sdchain_<name>/` with a README (command, sha256, what changed, checks, what's not
    covered). Write: copy both files to the card root, `sync`, unmount, remount, re-check sha256, unmount from
    outside the mount point (`cd ~` first). Don't power off the reader.
@@ -324,9 +336,9 @@ copy its code (`tools/fsim11.py`, `tools/cclook.py`) rather than inventing a new
 
 | Place | Classic Chrome | Where |
 |---|---|---|
-| FILM SIMULATION menu (shooting) + shooting-menu line | done | §4, §6, §6b; `fsim11.py` |
-| Look data (matrices, tone, chroma) | done | §6c; `cclook.py` |
-| RAW CONVERSION (playback) | done | §6d; `fsim11.py rawconv` |
+| FILM SIMULATION menu (shooting) + shooting-menu line | done | §4, §6, §6b; `features/menus.py` |
+| Look data (matrices, tone, chroma) | done | §6c; `features/looks.py`, `cc_look.py` |
+| RAW CONVERSION (playback) | done | §6d; `features/rawconv.py` |
 | Q menu, film-sim bracketing, custom settings, shooting-screen indicator, EXIF FilmMode | open | `ADDING_FILM_SIMS.md` §4 |
 
 A second new film simulation needs a fresh value in each place (the stubs get one more `cmp`), never Classic
@@ -361,3 +373,66 @@ calls `func_0x…`; jump tables sit right after `ldrls pc, [pc, rN, lsl #2]`.
 * A conversion-engine reverse lookup returns the *first* matching row; ambiguous codes (6/7 appear twice in
   setting 0x152) are not a fault.
 * Stub tables grow: re-check slot sizes (`assert len(code) <= …`) after adding entries.
+
+## 10. ACROS research: the X-Pro2 firmware (2026-11-16, static only)
+
+Source: `FWUP0008.DAT` (X-Pro2; `FWUP0008_xpro2.DAT` is the same file, identical SHA-256). Unpacked to `re/x2/`
+(`tools/unpack.sh`; blob1 RAM 0xa51000, blob2 0x1263000; third code image file 0x7d025c → RAM 0x18e3000, 0x6b0000,
+saved as `x2/blob3.bin`). Nothing about ACROS exists on any EXR-generation body (X-Pro1, X-E2, X-T1), so the X-Pro2
+(X-Processor Pro, 24 MP X-Trans III) is the only donor.
+
+**What ACROS is in the firmware**
+* Four film simulations: MODE_FSIM 14 ACROS, 15 +R, 16 +Ye, 17 +G (`MODE_FSIM_ACROS_N/R/Y/G_FILTER`, blob1
+  0xca9728); develop codes 12–15; own UI items in the shooting menu, Q menu, custom settings, film-sim bracketing
+  and RAW conversion (`PB_RAW_FSIM_ACROS(_Y/_R/_G)`). Grain effect (`MODE_GRAIN_OFF/SOFT/HARD`) arrived with it.
+* **Film sim → colour mode** (blob2 0x13fab48, jump table, result stored at struct +0x52):
+
+  | film sim | PROVIA | ASTIA | Velvia | B&W/MONO (all filters) | SEPIA | CHROME | Neg Std | Neg Hi | CLASSIC CHROME | ACROS | +Ye | +R | +G |
+  |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+  | colour mode | 0 | 5 | 4 | 2 | 3 | 1 | 6 | 7 | **8** | **10** | **11** | **12** | **13** |
+
+  Colour modes 0–7 are **numbered exactly as on the X-Pro1** (table blob2 0xf396b0), Classic Chrome is 8 as on the
+  X-E2, 9 is unused, and ACROS takes four colour modes of its own: unlike MONO, its filters are separate colour
+  modes, not a filter setting. A flag "ACROS" (colour mode 10–13) is also stored at struct +0x53 (blob2 0x13fb810).
+* **Same parameter scheme as the X-Pro1**: parameter area at file **0xc025c**, 0xd0000 bytes, loaded to RAM
+  0x2668000 (pointer 0xea7eb8; byte getter `0xb94708`/`0xb94ab4`, u16 getter `0xb94ac4`; IDs 0x202/0x203 = marker
+  0xaa55); value(ID) = byte at the area + ID (two ID ranges ≥ 0x160000 are banked). The pipeline functions at blob2
+  0x13eb000–0x13f3000 read the colour mode and index **u16 parameter-ID tables [row][14 colour modes]** (tables
+  0x17af52c, 0x17af66c, 0x17b031c, 0x17b048c, 0x17b059c, 0x17b0454, 0x17b0854, 0x17b094c, …): ACROS has its own ID
+  in several of them (e.g. 0x17af52c rows: preset 2 for ACROS where every other film sim has 1).
+* **ACROS gets its own processing category.** Two switches on colour mode − 2 (blob2 0x13ebbcc, 0x13f0814) sort film
+  sims into 0 = colour, 1 = MONO/SEPIA, **2 = ACROS** (3 = ACROS with a filter, second switch), each category with
+  its own per-ISO tables (struct +0x4d = ISO step, 15 steps): table 0x17b06d0 is 1 at all 15 ISO steps for ACROS but
+  only at the five lowest for the rest, and 0x17b06b8 / 0x17b088c / 0x17b0904 hold ACROS rows. This matches
+  Fujifilm's description of ACROS (fine grain and tone that change with ISO), and means ACROS is **more than a
+  curve and a matrix**.
+* **Tone curves: same format as the X-Pro1** (blob1 table 0xe27970, count 0x30 = 48 entries of 0x48 bytes:
+  number, 9-byte segment header, 28 × 14-bit knots; the X-Pro1 has 29 at 0x80b700). Only three X-Pro2 curves are
+  byte-identical to X-Pro1 ones (X-Pro2 41 = X-Pro1 0 / 26, 45 = 28); the rest are re-tuned for the X-Pro2's sensor,
+  and the X-E2's Classic Chrome curve is not among them.
+
+**What that means for an X-Pro1 ACROS**
+1. A faithful copy is not possible: ACROS's per-ISO processing category belongs to the X-Processor Pro's pipeline;
+   the X-Pro1 (EXR Pro) has no equivalent stage to switch on. Its tables are tuned for another sensor.
+2. An **ACROS-style film simulation** is possible with the converter: a new `FilmSim` (MODE_FSIM 2 or 4, own colour
+   mode 9, text IDs + an icon), MONO's matrices (monochrome), and ACROS's tone taken the way Classic Chrome's was:
+   the X-Pro2's ACROS curve **relative to the X-Pro2's PROVIA/MONO curve**, applied to the X-Pro1's curve. The +Ye /
+   +R / +G variants would need MONO's filter mechanism (one colour mode + filter field on the X-Pro1).
+3. **Tone found (2026-11-16):** the X-Pro2's base tone (blob2 0x13f094c: two curves from tables 0x17b0a9c /
+   0x17b0eb4 [level·16 + slot], slot from colour mode via blob1 0xbbf8d0, blended by 0x17b0e8c = 128 → one curve)
+   is curve 1 for PROVIA, MONO and SEPIA and **curve 7 for ACROS** (all filters). Ported as a change relative to
+   PROVIA (`classic_chrome/config/acros_curves.py`): ACROS_X-Pro1 = curve7 ∘ curve1⁻¹ ∘ the X-Pro1 curve, for the
+   three curves MONO's base tone uses (#0, #14, #16; tone family 6 IDs 0xdf93/0xdf9a, 0xdfa1/0xdfaf, 0xdfa8/0xdfb6).
+   Result: deeper blacks, brighter mid-tones. Live preview: `tools/acros_live.py apply|restore|status` puts them in
+   the unused curve slots #1–#3 and points MONO at them (RAM only).
+   **Planned build** (after the preview): film simulation 4 (the hidden B&W slot, already monochrome: colour mode 2,
+   no filter) as ACROS, menu row 11 with its own name and icon; detection per image by a side table filled where
+   the filter is set (`0xf38818`, called with the film sim), read by a stub in the base-tone function
+   `FUN_00f321f0` that swaps curves 0/14/16 for 1/2/3 when the image is ACROS; RAW-conversion film code 9 →
+   film simulation 4. Needs the converter's second-film-sim support (conversion table moved, 4 texts).
+4. Older next steps: (a) decode the X-Pro2's tone-selection code (which curve number each colour mode and tone level uses;
+   the counterpart of the X-Pro1's `FUN_00f321f0` / `FUN_00f3232c`), giving ACROS's curves and MONO's for the
+   difference; (b) list every [row][14] table where ACROS differs from MONO (colour mode 2), to see what besides
+   tone ACROS changes (sharpness, noise reduction, the per-ISO rows); (c) check the X-Pro1 for a free tone family
+   (none is free: ADDING_FILM_SIMS.md §1) or relocate the family tables; (d) the second-film-sim limits in the
+   converter (row 11, more texts).
