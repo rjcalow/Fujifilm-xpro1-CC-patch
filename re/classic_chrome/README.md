@@ -9,8 +9,10 @@ flash**. It is the base for further firmware changes: each change is a separate 
 ~/.venvs/xpro1-re/bin/python re/classic_chrome/convert.py --list                  # film simulations and features
 ```
 
-`--four-looks` adds PR #3's SUPERIA 400 (own colour mode), REGGIE'S PORTRA and KODACHROME II (recipes) and stronger
-white focus peaking as rows 11–13 (FINDINGS.md §11); `--add KEYS` / `--peaking` pick them one by one.
+**Line-up:** `--lineup classic_chrome,superia,reggie,kodachrome` (any of `--list`'s keys, any order, at most 6, at most 3
+looks) decides the card; every firmware number is assigned automatically and every menu (shooting menu and its line,
+RAW CONVERSION) is generated from it (FINDINGS.md §11b). `--four-looks` = that line-up + `--peaking`. To add a film
+simulation, add a `FilmSim` record to `config/film_sims.py` (a look borrowing stock selections, or a recipe).
 
 Default output (Classic Chrome only; the camera-confirmed build was `6693177b…`, now `72d00748…` with the
 WHITE BALANCE name fix, FINDINGS.md §11): CLASSIC CHROME as an 11th FILM SIMULATION entry

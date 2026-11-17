@@ -127,3 +127,15 @@ installed system-wide (use a venv).
       `re/build/sdchain_cc11wb_green/` (72d00748…): rows 10–13, names, icons, WHITE BALANCE AUTO row without a name,
       a picture per entry (FINDINGS §11). Then: Superia's 2x2 boost (second 2x2 preset + selector), RAW CONVERSION
       rows for the new entries.
+- [ ] Camera test of `re/build/sdchain_fourlooks_rc_green/` (28479b21…): RAW CONVERSION shows all four entries; converting with
+      each gives the expected look (recipes = their base). FINDINGS §11b.
+- [ ] Card module for EXIF FilmMode + RAW CONVERSION starting entry (FINDINGS §12.3 c): per look FilmMode (Classic
+      Chrome 0x600, borrowed looks a private value), both module-0x44 parsers extended from the line-up; emulator
+      check of both parsers; camera test (new pictures open on their entry).
+- [ ] **Focus-peaking menu with stronger / bolder options** (user, 2026-11-17). Today `--peaking` fixes the HIGH level's
+      gains (tuning bytes 0xc88c 40→48, 0xc8a5 / 0xc8a7 64→120, features/peaking.py, from PR #3). Goal: keep HIGH / LOW
+      stock and add rows to the MF ASSIST peaking menu, e.g. HIGHER and MAX, each with its own gain (and outline width,
+      if a parameter for it exists). To find first: the peaking setting's menu node / list / conversion table (as for
+      FILM SIMULATION, FINDINGS §3), where the selected level picks the tuning IDs (0xc88c / 0xc8a5 / 0xc8a7 and their
+      LOW counterparts), and whether outline width or colour is a separate parameter. Then a features/ module driven
+      like the line-up (levels as data), live test over USB first.

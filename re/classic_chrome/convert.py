@@ -7,14 +7,15 @@ Default: Classic Chrome as an 11th film simulation, with its own look, in the sh
 CONVERSION menu, green menu accent. Output: OUTDIR/ffsys.bin, OUTDIR/ffboot.bin (card root) and OUTDIR/README.md.
 
 options:
-  --sim KEY          film simulation in row 10 (default classic_chrome; --list shows them)
-  --add KEYS         further entries, comma-separated, rows 11.. in this order: superia, reggie, kodachrome
-                     (PR #3's looks: Superia 400 = own colour mode; Reggie's Portra / Kodachrome II = recipes)
+  --lineup KEYS      the new entries, comma-separated, in menu order (rows 10, 11, ...); every menu (shooting
+                     menu and its line, RAW CONVERSION) and every firmware number is generated from it
+                     (config/film_sims.py: lineup). At most 6 entries, at most 3 of them looks. --list shows the keys.
+  --sim KEY / --add KEYS   older form: --lineup KEY,KEYS (default classic_chrome)
   --peaking          stronger white focus peaking (PR #3: HIGH gain 64 → 120)
-  --four-looks       = --add superia,reggie,kodachrome --peaking
+  --four-looks       = --lineup classic_chrome,superia,reggie,kodachrome --peaking
   --look own|borrow  own: Classic Chrome data of its own, PRO Neg. Hi back to stock (default)
                      borrow: use PRO Neg. Hi's slot, which the flashed v2 fills with Classic Chrome data
-  --no-rawconv       leave the RAW CONVERSION menu stock
+  --no-rawconv       leave the RAW CONVERSION menu stock (default: every entry gets a row; a recipe converts with its base)
   --no-green         keep the stock red menu accent
   --flash FILE       firmware in the camera's flash (default re/build/ptpdebug_385/FPUPDATE.DAT, the v2 build)
   --stub FILE        boot stub (default re/work/chain/chain_crumbs.bin; build: re/sdchain/build.sh)
@@ -31,7 +32,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'
 from classic_chrome.engine.firmware import Firmware, DEFAULT_FLASH
 from classic_chrome.engine.card import Card
 from classic_chrome.engine import sdcard
-from classic_chrome.config.film_sims import SIMS, validate
+from classic_chrome.config.film_sims import SIMS, FOUR_LOOKS, lineup
 from classic_chrome.features.menus import FilmSimMenu
 from classic_chrome.features.rawconv import RawConversion
 from classic_chrome.features.looks import LOOKS
@@ -57,33 +58,61 @@ def flag(args, name):
     return False
 
 
+def lineup_keys(opts):
+    """(keys, peaking) from converter options (used by verify.py too)."""
+    o = list(opts)
+    val = lambda name, default: o[o.index(name) + 1] if name in o else default
+    four = '--four-looks' in o
+    if '--lineup' in o: keys = [k for k in val('--lineup', '').split(',') if k]
+    elif four: keys = list(FOUR_LOOKS)
+    else: keys = [val('--sim', 'classic_chrome')] + [k for k in val('--add', '').split(',') if k]
+    return keys, four or '--peaking' in o
+
+
+def build_card(sims, look, rawconv, peaking):
+    from classic_chrome.features.looks import OwnLook, BorrowLook
+    cc = next((s for s in sims if s.own_data), None)
+    extras = [s for s in sims if not s.is_recipe and not s.own_data]
+    if look == 'borrow':
+        assert cc and not extras, '--look borrow: Classic Chrome only, no other looks'
+        lk = BorrowLook(cc)
+    else:
+        lk = OwnLook(cc, extras) if (cc or extras) else None
+    menu = FilmSimMenu(sims)
+    recipes = [s for s in sims if s.is_recipe]
+    parts = ([RawConversion(sims, menu)] if rawconv else []) + ([Recipes(recipes)] if recipes else []) \
+        + ([Peaking()] if peaking else [])
+    return Card(menu, parts, lk)
+
+
 def main(args):
     if flag(args, '--list'):
+        print('film simulations:')
         for s in SIMS.values():
-            kind = 'recipe' if s.is_recipe else 'look'
-            print(f'{s.key:16} {s.name:16} {kind:6} MODE_FSIM {s.mode_fsim:2}, row {s.row}, stored {s.stored}'
-                  + (f', RAW code {s.rawconv_code}' if s.rawconv_code is not None else ''))
+            how = f'recipe on {s.base}' if s.is_recipe else ('look (own data)' if s.own_data else 'look (borrowed selections)')
+            print(f'  {s.key:16} {s.name:16} {how}')
+        print('numbers for the four-looks line-up (assigned by config.lineup):')
+        for s in lineup(FOUR_LOOKS):
+            print(f'  row {s.row}  {s.key:16} stored {s.stored:2}  MODE_FSIM {s.mode_fsim:2}  RAW code {s.rawconv_code}'
+                  + (f'  colour mode {s.colour_mode}' if s.colour_mode is not None else ''))
         for k, v in FEATURES.items(): print(f'  feature {k:8} {v}')
         return
-    sim_key = opt(args, '--sim', 'classic_chrome'); look = opt(args, '--look', 'own')
+    look = opt(args, '--look', 'own')
     flash = opt(args, '--flash', DEFAULT_FLASH); stub = opt(args, '--stub', sdcard.STUB_DEFAULT)
     rawconv = not flag(args, '--no-rawconv'); green = not flag(args, '--no-green'); verify = flag(args, '--verify')
-    four = flag(args, '--four-looks'); peaking = flag(args, '--peaking') or four
-    add = opt(args, '--add', 'superia,reggie,kodachrome' if four else '')
-    add = [k for k in add.split(',') if k]
+    keys, peaking = lineup_keys(sys.argv[1:])
+    for name in ('--lineup', '--add', '--sim'): opt(args, name)
+    flag(args, '--four-looks'); flag(args, '--peaking')
     opts = [a for a in sys.argv[1:] if (a not in args or a.startswith('--')) and a not in ('--verify',)]
-    if len(args) != 2 or sim_key not in SIMS or look not in LOOKS or any(k not in SIMS for k in add): sys.exit(__doc__)
+    if len(args) != 2 or look not in LOOKS: sys.exit(__doc__)
     src, out = args
-    from dataclasses import replace
-    sims = [replace(SIMS[k], row=10 + n) for n, k in enumerate([sim_key] + add)]     # rows follow the --add order
-    validate(sims)
+    try:
+        sims = lineup(keys)
+    except AssertionError as e:
+        sys.exit(f'line-up {keys}: {e}')
 
     fw = Firmware(src, flash)
-    recipes = [s for s in sims if s.is_recipe]
-    extras = [s for s in sims[1:] if not s.is_recipe]
-    parts = ([RawConversion(sims[:1])] if rawconv else []) + ([Recipes(recipes)] if recipes else []) \
-        + ([Peaking()] if peaking else [])
-    card = Card(FilmSimMenu(sims), parts, LOOKS[look](sims[0], extras))
+    card = build_card(sims, look, rawconv, peaking)
     files, info = sdcard.build(fw, card, green=green, stub_path=stub)
 
     os.makedirs(out, exist_ok=True)
@@ -95,7 +124,7 @@ def main(args):
     print(f"card: {e['markers']} blob1 words, module words {e['module_words']}, {e['blob2_words']} blob2 words, "
           f"filler {e['filler'][0]:#x}-{e['filler'][1]:#x}")
     feats = [f"{', '.join(s.name for s in sims)} in the shooting menu", f"look: {look}"] \
-        + ([f'{sims[0].name} in RAW CONVERSION'] if rawconv else []) + (['white focus peaking'] if peaking else []) \
+        + (['all of them in RAW CONVERSION'] if rawconv else []) + (['white focus peaking'] if peaking else []) \
         + (['green menu accent'] if green else [])
     open(os.path.join(out, 'README.md'), 'w').write(f'''# SD dual-boot card: {", ".join(feats)}
 

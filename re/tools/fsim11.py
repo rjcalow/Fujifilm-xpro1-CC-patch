@@ -10,7 +10,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, '..')); sys.path.insert(0, os.path.join(HERE, '..', '..', 'public'))
 from classic_chrome.engine import card as _card
 from classic_chrome.engine.firmware import B1_BASE, B2_BASE, MODULES
-from classic_chrome.config.film_sims import CLASSIC_CHROME as _SIM
+from classic_chrome.config.film_sims import lineup as _lineup
+_SIM = _lineup(['classic_chrome'])[0]
 from classic_chrome.features import menus as _m, looks as _l, texts as _t
 
 END = _card.END

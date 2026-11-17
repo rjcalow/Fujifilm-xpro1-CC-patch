@@ -37,12 +37,11 @@ if crumbs:
         assert cc, '--fsim11 needs --cc (it extends the v3 language hook)'
         sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
         from classic_chrome.engine.firmware import Firmware
-        from classic_chrome.engine.card import Card
-        from classic_chrome.config.film_sims import CLASSIC_CHROME
-        from classic_chrome.features import menus, rawconv as rc, looks, texts
-        fw = Firmware(dat, flash); sims = [CLASSIC_CHROME]
-        card = Card(menus.FilmSimMenu(sims), [rc.RawConversion(sims)] if rawconv else [],
-                    looks.LOOKS['own' if cclook_on else 'borrow'](CLASSIC_CHROME))
+        from classic_chrome.config.film_sims import lineup
+        from classic_chrome.convert import build_card
+        from classic_chrome.features import texts
+        fw = Firmware(dat, flash); sims = lineup(['classic_chrome'])
+        card = build_card(sims, 'own' if cclook_on else 'borrow', rawconv, False)
         card.check(fw)
         def _fsim11(L, asm, bl):
             used = max(i for i in range(0xa400, 0xc000) if L[i] != 0xff)

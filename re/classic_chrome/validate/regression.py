@@ -6,14 +6,16 @@ not meant to alter an existing card must keep these; a change that is meant to m
 end: its word 10 (0x1483c48) is entry 0 of the WHITE BALANCE name table, where the earlier cards put the
 CLASSIC CHROME name. Earlier builds: default 6693177b… (camera-confirmed 2026-11-15), --no-rawconv 8d8364dc…,
 --look borrow 127c321c…, --no-green b8547c4b… (tools/build_sdchain.py --fsim11 now gives the new builds too).
-All entries below pass the emulator checks; --four-looks is camera-confirmed (2026-11-17), the others not yet.
+All entries below pass the emulator checks. Camera-confirmed: four-looks 4261ad85… (2026-11-17, before all entries got
+RAW CONVERSION rows); the entries below not yet.
 """
 KNOWN = {   # options (default values left out) → ffboot.bin SHA-256 (or its first 16 hex digits)
     frozenset(): '72d00748c77b9db78183f69554a7049cc1e77004cc4b06b17d522c76a098c214',
     frozenset({'--no-rawconv'}): 'e048ffa2ae4eef944958e671cc95d629741ba00ede1d7bdf3479aee51ae21264',
     frozenset({'--look=borrow'}): '429be0fb7c79f6cafc798d196ccb7b048add23aafab046b469aabbe38c377c94',
     frozenset({'--no-green'}): 'd76d9ee112108ceb441c56566647fe9f0aaf6f9d123fe4eb593a2cf48721bc9e',
-    frozenset({'--four-looks'}): '4261ad85b02db7a46c7a21c3893f89049947bc0004376c511a849fe8270c351a',
+    frozenset({'--four-looks'}): '28479b21e3cb202697e5ac3d52103ca987ff2ae81dccd550d5420f768a48cbd3',   # + RAW rows for all
+    # (4261ad85… = the camera-confirmed four-looks card with only Classic Chrome in RAW CONVERSION)
 }
 DEFAULTS = {'--sim': 'classic_chrome', '--look': 'own'}
 WITH_VALUE = ('--sim', '--look', '--flash', '--stub', '--add')

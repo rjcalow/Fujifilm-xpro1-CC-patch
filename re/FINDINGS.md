@@ -1,7 +1,7 @@
 # Adding new film simulations to the X-Pro1: findings
 
 Goal: add film simulations (Classic Chrome first) as **extra menu entries**, keeping all ten stock ones.
-State 2026-11-15. Nothing here is flashed. Camera tests were RAM-only: live over USB (debug firmware `ptpdebug_385`)
+State 2026-11-17. Nothing here is flashed. Camera tests were RAM-only: live over USB (debug firmware `ptpdebug_385`)
 and then from the SD-boot cards (§6b, §6d), which work on the camera. **To add another film simulation, an AI agent
 should start at §9.**
 Addresses are RAM addresses (blob1 loads at 0x774000, blob2 at 0xe0ec80). Session detail: `NOTES.md` (2026-11-12 night onward).
@@ -26,8 +26,10 @@ Addresses are RAM addresses (blob1 loads at 0x774000, blob2 at 0xe0ec80). Sessio
 | Image pipeline using the new slot's own data | **Done**: 9 fallback instructions → stubs, 2 tables relocated, data in free presets (§6c) |
 | RAW CONVERSION menu (playback) | **Works on the camera** (2026-11-15): CLASSIC CHROME row, converts as Classic Chrome (§6d) |
 | Four looks on the SD card (PR #3: Superia 400, Reggie's Portra, Kodachrome II, focus peaking) | **Works on the camera** (2026-11-17): rows 11–13 next to Classic Chrome; also fixes a WHITE BALANCE menu name bug of the earlier cards (§11) |
+| Line-up generator (any film sims, any order, every menu generated) | **Done** (2026-11-17), emulator-checked for 7 line-ups (§11b, §12.2) |
+| RAW CONVERSION opening on the picture's film sim | **Fixed live** (2026-11-17): EXIF FilmMode 0x600 + two module-0x44 parsers; card module to build (§12.3 c) |
 | ACROS (from the X-Pro2) | **Researched** (2026-11-16): colour modes 10–13 of its own, same table scheme and curve format as the X-Pro1, plus an ACROS-only per-ISO processing category; an ACROS-style film sim is feasible, a faithful copy is not (§10) |
-| Other menus (Q menu, bracketing, custom settings), EXIF | Lists located, not patched (§3, §7) |
+| Other menus (Q menu, bracketing, custom settings) | Lists located, not patched (§3, §7, §12.2) |
 
 ## 2. Free film-simulation slots
 
@@ -339,8 +341,9 @@ copy its code (`classic_chrome/features/menus.py`, `rawconv.py`, `cc_look.py`) r
 |---|---|---|
 | FILM SIMULATION menu (shooting) + shooting-menu line | done | §4, §6, §6b; `features/menus.py` |
 | Look data (matrices, tone, chroma) | done | §6c; `features/looks.py`, `cc_look.py` |
-| RAW CONVERSION (playback) | done | §6d; `features/rawconv.py` |
-| Q menu, film-sim bracketing, custom settings, shooting-screen indicator, EXIF FilmMode | open | `ADDING_FILM_SIMS.md` §4 |
+| RAW CONVERSION (playback) | done, every line-up entry | §6d, §11b; `features/rawconv.py` |
+| EXIF FilmMode + RAW CONVERSION starting entry | proven live, card module to build | §12.3 c |
+| Q menu, film-sim bracketing, custom settings, shooting-screen indicator | open | `ADDING_FILM_SIMS.md` §4 |
 
 A second new film simulation needs a fresh value in each place (the stubs get one more `cmp`), never Classic
 Chrome's numbers: film sim 6, colour mode 1, stored 13, row 10, texts 819/1215, presets 17/18/12, family 5,
@@ -477,3 +480,91 @@ entry, so two things are done differently:
 * **Camera (user, 2026-11-17)**: rows 10–13 shown with names and icons, each selectable and kept; WHITE BALANCE menu
   normal; the four entries give four different pictures. Not yet checked: colour of each against its reference,
   focus-peaking strength, RAW CONVERSION of a recipe picture (gives the base look; there is no recipe row).
+
+### 11b. Line-up generator and RAW CONVERSION for every entry (2026-11-17, emulator-checked)
+
+`convert.py --lineup KEYS` (or `--four-looks`): a card is an ordered list of film-simulation keys; every firmware
+number is assigned by `config/film_sims.py: lineup()` from the free pools and every menu is generated from the same
+list, so swapping or reordering entries updates the shooting menu, its line and RAW CONVERSION together.
+
+| Limit | How many | Why |
+|---|---|---|
+| New menu entries | 6 (16 stored values, 10 stock) | setting 0x3d's stored value is 4 bits; pool 13, 14, 15, 10, 9, 8 |
+| Looks (render differently) | 3 | MODE_FSIM 0–12, spare 2, 4, 6 (Classic Chrome keeps 6) |
+| Borrowed looks (stock selections combined, like Superia) | 2 | colour modes 8, 9 |
+| Looks with their own data (like Classic Chrome) | 1 | selector index 7 and the freed tone family 5 are Classic Chrome's |
+| Recipes | the rest | need only a stored value; render with a base look's MODE_FSIM |
+| RAW CONVERSION film codes | from 8 up | Classic Chrome 8 (as the X-E2), then 9, 10, … |
+
+* **RAW CONVERSION** (features/rawconv.py): every entry gets a row, a film code and a module-0x44 case (code →
+  MODE_FSIM; a recipe → its base's, so it converts with the base look: its overrides belong to shooting). Names: the
+  RAW screen draws through the same call as the shooting menu (0x147c798), so rows without text IDs use the same
+  drawn strings; icons from `FilmSim.icons` (Superia → ASTIA's, recipes → their base's). A single-entry line-up keeps
+  the camera-tested single-row code: the Classic Chrome card is still `72d00748…`.
+* Any line-up, any order: Classic Chrome need not be first or present. Without it the look module installs only the
+  borrowed looks' stubs (no Classic Chrome data, PRO Neg. Hi untouched, i.e. as the flashed v2 has it), and no text
+  IDs are repointed (all names drawn). Fixed on the way: an empty tuning list made the hooks fall back to their legacy
+  default (v3 chroma in PRO Neg. Hi); the engine now always passes a list.
+* Checks: verify ALL OK for the five standard cards and for `--lineup superia,kodachrome` and
+  `--lineup superia,classic_chrome,reggie`. Four-looks card with RAW rows: `re/build/sdchain_fourlooks_rc_green/`
+  (`28479b21…`), camera test pending.
+
+## 12. The merge, every menu a new film simulation appears in, and three bugs (2026-11-17)
+
+### 12.1 PR #3 and the converter
+
+* **PR #3** (simonjardine, "four-look 3.93 patcher") is merged into `main` (b5a6e93): `public/xpro1_four_looks.py`
+  builds a **flashable** 3.93 (Classic Chrome in PRO Neg. Hi's slot, SUPERIA 400, REGGIE'S PORTRA, KODACHROME II,
+  stronger focus peaking; code placed in duplicate read-only blob1 menu lists). Tested here before the merge: build
+  reproducible (`540766f0…`), its emulator check passes, loader / section 0 / modules 0x42–0x44 untouched, no hidden
+  reference into the reused lists, the lists never written in the running camera's RAM. Not flashed here.
+* The converter restructure (`Converter-v1`) was merged after it (035ed80); the fork's script imports the removed
+  `tools/fsim11.py`, which came back as a compatibility module serving the old names from the package.
+* The fork's looks were then rebuilt **for the SD card** inside the converter (§11): Classic Chrome keeps its own
+  entry, so a recipe keys on its stored menu value instead of a MODE_FSIM of its own, and Superia gets colour mode 8.
+
+### 12.2 Every menu a new film simulation appears in
+
+The card is generated from one line-up (`convert.py --lineup`, §11b); each place below is a feature module that
+reads it, so adding, swapping or reordering film simulations updates all of them together.
+
+| Place | Module | What it changes | State |
+|---|---|---|---|
+| FILM SIMULATION menu (shooting) | features/menus.py | setting 0x3d conversion table, both menu lists, row-name table (copied), icon tables, row limit | camera-confirmed, 4 entries |
+| Shooting-menu line (icon of the current film sim) | features/menus.py | MODE_FSIM → row byte tables 0x1474e7c / 0x1474e3c (looks; a recipe shows its base) | camera-confirmed |
+| Names of rows 11+ | features/menus.py | DRAW stub on the name-draw call 0x147c798 (shared by both menus) | camera-confirmed |
+| Picture (look) | features/looks.py (+ cc_look.py) | MODE_FSIM → colour mode, selection stubs, own data for Classic Chrome | camera-confirmed |
+| Picture (recipe) | features/recipes.py | shooting message 0xf79434, compact exporter 0x9b7610 | camera-confirmed (different pictures) |
+| RAW CONVERSION (playback) | features/rawconv.py | setting 0x152 list / table, apply + cursor chains, name / icon tables, module 0x44 code → MODE_FSIM | Classic Chrome camera-confirmed; all entries emulator-checked |
+| RAW CONVERSION starting entry + EXIF FilmMode | **to build** (§12.3 c) | EXIF FilmMode table 0x1097f6e, two module 0x44 parsers | camera-confirmed live (RAM), not yet on the card |
+| Q menu, film-sim bracketing, custom settings, shooting-screen indicator | not yet | ADDING_FILM_SIMS.md §4 | open |
+
+### 12.3 Bugs found on the way
+
+a) **WHITE BALANCE name slot.** The FILM SIMULATION row-name table 0x1483c20 has 10 entries; its word 10
+   (0x1483c48) is entry 0 of the WHITE BALANCE name table (COLOR TEMPERATURE, FINE, SHADE, …). The earlier cards and
+   PR #3's 3.93 write Classic Chrome's text ID there. No visible effect seen on the camera (WB menu normal), but the
+   table is now copied and repointed instead, so 0x1483c48 stays 0. All card hashes changed (§11).
+
+b) **Legacy tuning default.** A card without Classic Chrome passed no tuning list, and the tuning hook fell back to
+   its old default: the v3 chroma values written into PRO Neg. Hi. The engine now always passes a list
+   (`Card.tuning`), so a card changes only what its line-up contains. Found by the emulator check of
+   `--lineup superia,kodachrome`.
+
+c) **RAW CONVERSION starts on PROVIA for a Classic Chrome picture** (user, 2026-11-17). The screen's starting entry
+   is the picture's film code, which the playback side derives from the file's EXIF FilmMode (tag 0x1401) and
+   the shooting side writes from table blob2 **0x1097f6e** (u16 per MODE_FSIM: 0 PROVIA, 1 0x120, 3 0x200, 11 0x500,
+   12 0x501; MODE_FSIM 2 and 6 = 0x000, i.e. PROVIA). Two parsers in module 0x44 map FilmMode → film code:
+   **`FUN_01602a44`** (fallback `mvn r3,#0` at 0x1602c34, result at [r4,#0xc8], continue 0x1602cf8) and
+   **`FUN_01602d98`** (fallback at 0x1603030, result at [r5,#0xc8], continue 0x1603038); both: 0x000 → 0,
+   0x100 → 1, 0x110 → 2, 0x120 → 3, 0x130 → 4, 0x200 → 5, 0x500 → 6, 0x501 → 7, anything else → −1.
+   The second one is the playback path. Proven live (RAM, card-booted camera):
+   * EXIF table entry for MODE_FSIM 6 := **0x600** (Fujifilm's Classic Chrome FilmMode, as the X-E2 writes) →
+     a new Classic Chrome picture's film code read back as −1 (unknown): still PROVIA;
+   * stubs on both fallbacks: 0x600 → film code 8 (Classic Chrome's RAW CONVERSION code) → film code 8 in the
+     picture's image info (0x9d2450 +0x164) and the RAW block, and **RAW CONVERSION opens on CLASSIC CHROME**
+     (user, DSCF2785). Pictures taken before keep 0x000 and open on PROVIA.
+   Bonus: the EXIF then names the film simulation Classic Chrome for other software. For the card: a feature module
+   that writes each look's FilmMode (Classic Chrome 0x600; borrowed looks need a value of their own, not an official
+   one) and extends both parsers from the line-up; a recipe shares its base's MODE_FSIM and therefore its FilmMode,
+   so it opens on its base's row.

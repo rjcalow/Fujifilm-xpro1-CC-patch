@@ -1188,3 +1188,16 @@ X-Pro1 blob1 now decompiled too: `decompiled/xpro1_blob1_0x774000.c.gz` (Ghidra 
   0x1483c48 = 0). User: WHITE BALANCE menu normal, AUTO shown. Whether the earlier cards' write to 0x1483c48 was
   visible is unconfirmed (not re-tested); the table copy stays either way.
 * (2026-11-17, camera) User: rows 10–13 with names + icons, each selectable and kept, all four pictures different. Four-looks card camera-confirmed.
+* (2026-11-17) Line-up generator: config/film_sims.py lineup() assigns row / stored (13,14,15,10,9,8) / MODE_FSIM
+  (CC 6, others 2,4,6) / colour mode (CC 1, others 8,9) / RAW code (8..). convert.py --lineup; RawConversion for every
+  entry (single entry = old code, CC card still 72d00748…); OwnLook without Classic Chrome; Card.tuning always a list
+  (None fell back to PARAMS3 in PRO Neg. Hi). Verified 7 line-ups incl. superia,kodachrome and
+  superia,classic_chrome,reggie. Four-looks + RAW rows: 28479b21… (re/build/sdchain_fourlooks_rc_green).
+
+## 2026-11-17: RAW CONVERSION starting entry (live)
+* User: a Classic Chrome RAF opens RAW CONVERSION on PROVIA. Start = image info 0x9d2450 +0x164 (film code), from the
+  file's EXIF FilmMode via module 0x44 parsers FUN_01602a44 (fallback 0x1602c34) and FUN_01602d98 (fallback 0x1603030,
+  the playback one). EXIF table blob2 0x1097f6e (MODE_FSIM 6 = 0x000).
+* Live (card 28479b21 booted): POKE 0x1097f78 0x0000ffff → 0x0600ffff (MODE_FSIM 6 → 0x600): new CC shot DSCF2785
+  → film code −1 (still PROVIA). Stubs at 0xc800 / 0xc840 on both fallbacks (0x600 → 8): image info +0x164 = 8,
+  RAW block +8 = 8, menu opens on CLASSIC CHROME (user). RAM only; gone at power-off. FINDINGS §12.3 c.

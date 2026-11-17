@@ -31,7 +31,7 @@ An [experimental four-look patcher for the original X-Pro1](public/FOUR_LOOKS.md
 | SD card with Classic Chrome v3 + green UI (`--crumbs --uiswap --cc`) | **Working for colour** (2026-11-12): an in-camera RAW conversion from the SD-booted firmware matches the v3 values. Menu name and green accent after SD boot: emulator-checked, not yet confirmed on the camera |
 | SD card: Classic Chrome as an **11th FILM SIMULATION entry** (`--crumbs --uiswap --cc --fsim11`) | **Working** (2026-11-13): entry with the X-E2 icon + CLASSIC CHROME below SEPIA, selectable, shown on the shooting-menu line; Classic Chrome look. Not yet in Q menu, bracketing, RAW conversion, EXIF. Details: [`re/FINDINGS.md`](re/FINDINGS.md) |
 | SD card: the new entry with **its own look data, PRO Neg. Hi back to stock** (`… --fsim11 --cclook`) | **Built and emulator-proven** (2026-11-13, `re/build/sdchain_cc11own_green/`): colour mode 1 renders from its own presets and tone family, PRO Neg. Hi is Fujifilm's original again. Applied live on the camera; photo comparison pending |
-| SD card: **four looks** (`re/classic_chrome/convert.py --four-looks`) | **Working on the camera** (2026-11-17, `re/build/sdchain_fourlooks_green/`): PR #3's SUPERIA 400, REGGIE'S PORTRA, KODACHROME II and stronger white focus peaking next to our CLASSIC CHROME, as SD-card RAM patches. Menu rows, names, icons and selection confirmed; each entry gives a different picture |
+| SD card: **four looks** (`re/classic_chrome/convert.py --four-looks`, or any `--lineup`) | **Working on the camera** (2026-11-17, `re/build/sdchain_fourlooks_green/`): PR #3's SUPERIA 400, REGGIE'S PORTRA, KODACHROME II and stronger white focus peaking next to our CLASSIC CHROME, as SD-card RAM patches. Menu rows, names, icons and selection confirmed; each entry gives a different picture. Since then every entry also gets a RAW CONVERSION row and line-ups can be chosen freely (`sdchain_fourlooks_rc_green`, emulator-checked) |
 | SD card: CLASSIC CHROME also in the **RAW CONVERSION menu** (`… --fsim11 --cclook --rawconv`) | **Built and emulator-proven** (2026-11-15, `re/build/sdchain_cc11rc_green/`): the code that turns the RAW-conversion menu's film code into the developer's film simulation was found live (module 0x44) and given a Classic Chrome case; menu row, name, icon and both blob2 chains added. **Working on the camera** (2026-11-15): CLASSIC CHROME in the shooting menu and the playback RAW CONVERSION menu. Accuracy test vs a real Classic Chrome body: to do |
 | **ACROS** as a 12th film simulation | **Roadmap.** The recipe for a further film simulation is in [`re/ADDING_FILM_SIMS.md`](re/ADDING_FILM_SIMS.md) (free numbers, tables to extend, look data, RAW conversion); ACROS would start from MONO's colour mode and tone family with its own curve |
 | USB debug firmware (label 3.85) | Flashed and working: memory peek / poke / call over USB (PTP) |
@@ -185,6 +185,10 @@ restores everything.
 * [fujimod](https://github.com/justjake/fujimod) (FujiHack community): independent documentation of the update
   format and SD boot for many Fujifilm cameras. Its boot-ROM facts helped here. The X-Pro1 SD chain stub and loader
   hook in this repository are separate code.
+* Thanks to [simonjardine](https://github.com/simonjardine) for the four-look 3.93 patcher
+  ([PR #3](https://github.com/rjcalow/Fujifilm-xpro1-CC-patch/pull/3), [`public/FOUR_LOOKS.md`](public/FOUR_LOOKS.md)):
+  SUPERIA 400, REGGIE'S PORTRA, KODACHROME II and the stronger white focus peaking, with emulator checks. The SD-card
+  converter's versions of these looks (`re/classic_chrome/`) are built on that work.
 
 Fujifilm, X-Pro1, X-E2 and Classic Chrome are trademarks of FUJIFILM Corporation. This project is not affiliated with
 or endorsed by Fujifilm.

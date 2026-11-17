@@ -35,7 +35,7 @@ SLOT = 0x20
 
 def lang(fw, texts):
     """(entries, tail template) for cchook.install(lang=...). texts: {text ID: string}, in slot order."""
-    assert 1 <= len(texts) <= 3, 'at most three repointed texts with the current tail (see module docstring)'
+    assert len(texts) <= 3, 'at most three repointed texts with the current tail (see module docstring)'
     t = bytearray(cchook.TAIL_LEN)
     t[0:8] = b'UINM' + struct.pack('<I', len(texts)); t[8:0x20] = b'\xff' * 0x18
     offs = {}

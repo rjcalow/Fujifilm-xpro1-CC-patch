@@ -27,7 +27,8 @@ import xpro1_cc_patch as P
 
 dat, boot, W, flash, keys = sys.argv[1:6]
 PEAKING = '--peaking' in sys.argv[6:]
-SIMS_ON = [replace(SIMS[k], row=10 + n) for n, k in enumerate(keys.split(','))]
+from classic_chrome.config.film_sims import lineup
+SIMS_ON = lineup(keys.split(','))
 img = bytes(x ^ 0xff for x in open(dat, 'rb').read()); fimg = bytes(x ^ 0xff for x in open(flash, 'rb').read())
 ffboot = open(boot, 'rb').read()
 m = ffboot.find(struct.pack('<I', 0x4e494843)); _, po, pl, ol, crc = struct.unpack('<5I', ffboot[m - 0x14:m])
@@ -101,20 +102,20 @@ check('boot: tuning hook ran on the flashed tuning area', r[0] == 'ok')
 st['phase'] = 'tests'
 
 # ---- 1 names
-drawn = [s for s in SIMS_ON if s.row > 10]
+drawn = [s for s in SIMS_ON if not s.name_id]
 bad = []
 for s in drawn:
     mu.reg_write(UC_ARM_REG_R4, s.row)
     r = call(M.ROW_CAP, [0, 0, 0, 0, s.row, 0], stop=0x147c75c)
     token = mu.reg_read(UC_ARM_REG_R4)
-    mu.mem_write(0x130000 + SIMS_ON[0].name_id * 10, struct.pack('<I', 64))
+    mu.mem_write(0x130000 + M.STYLE_ID * 10, struct.pack('<I', 64))
     draw = word(0x147c798)                                             # the patched `bl` → DRAW
     off = draw & 0xffffff; off -= (off & 0x800000) << 1; DRAW = 0x147c798 + 8 + 4 * off
     r2 = call(DRAW, [0xffffffec, 3 + drawn.index(s), token], stop=0x1488808)
     glyphs = struct.unpack(f'<{len(s.name) + 1}H', bytes(mu.mem_read(0x12b99be, 2 * (len(s.name) + 1))))
     if r[0] != 'ok' or r2[0] != 'ok' or bytes(g - 0xe100 for g in glyphs[:-1]) != s.name.encode() or glyphs[-1]:
         bad.append((s.key, r[0], r2[0], hex(token), glyphs[:6]))
-check(f'names: rows {[s.row for s in drawn]} draw {[s.name for s in drawn]} through the stock lookup + DRAW', drawn and not bad, str(bad))
+check(f'names: rows {[s.row for s in drawn]} draw {[s.name for s in drawn]} through the stock lookup + DRAW', not bad, str(bad))
 
 # ---- 2 recipes
 SOURCE, COMMAND, FRAME, PACKET = 0x9cb2fc, 0x1db0000, 0x1d00000, 0x120220c
@@ -163,10 +164,10 @@ for stored, mode, recipe, label in cases:
         if comp != expect(comp_stock, recipe, R.COMPACT_OFF): bad.append((label, group, 'compact',
             [hex(i) for i in range(0x218) if comp[i] != expect(comp_stock, recipe, R.COMPACT_OFF)[i]][:8]))
 check(f'recipes: shooting message + compact record carry exactly {[s.name for s in recipes]}\'s settings; '
-      f'{len(cases) - len(recipes) * 2} other selections unchanged; 3 WB modes', recipes and not bad, str(bad[:3]))
+      f'{len(cases) - len(recipes) * 2} other selections unchanged; 3 WB modes', not bad, str(bad[:3]))
 
 # ---- 3 looks with extras
-extras = [s for s in SIMS_ON[1:] if not s.is_recipe]
+extras = [s for s in SIMS_ON if not s.is_recipe and not s.own_data]   # borrowed looks
 st['phase'] = 'pipe'
 REC = 0x1e10000
 def recctl(cm, alt=0, mode=0, flag180=0, e4=0, f154=0, b8=0, f118=3, f124=0):
@@ -189,7 +190,6 @@ tone = lambda bl, db, fn, cm, **kw: (recctl(cm, **kw), run(bl, db, fn, [REC, 0x1
 TONES = ((0xf321f0, {}), (0xf321f0, {'flag180': 1}), (0xf321f0, {'mode': 4}), (0xf321f0, {'e4': 7, 'mode': 4}),
          (0xf3232c, {}), (0xf3232c, {'f154': 2}), (0xf3232c, {'f154': 2, 'b8': 4}), (0xf3232c, {'mode': 5, 'f124': 3, 'f118': 7}),
          (0xf3232c, {'mode': 5}))
-CM_OF = {(1, 2): 0, (3, 1): 1}                     # reference colour modes for the borrowed selections (see below)
 for s in extras:
     lk, cm = s.look, s.colour_mode
     ref3 = {2: 5}[lk['idx3']]; ref2 = {0: 0}[lk['idx2']]; reft = {3: 6}[lk['family']]   # ASTIA / PROVIA / PRO Neg. Std
@@ -207,20 +207,22 @@ for s in extras:
     bad = [(hex(fn), kw) for fn, kw in TONES if tone(b2p, dbimg, fn, cm, **kw) != tone(b2p, dbimg, fn, reft, **kw)]
     check(f'{s.key}: tone (9 variants) = colour mode {reft}', not bad, str(bad[:3]))
 if extras:
-    # the stock colour modes render as on stock firmware (stock blob2 + official tuning area); SEPIA's tone runs through
-    # PROVIA's family on the card (cc_look: its curves are PROVIA's), which gives the same curves
+    # the stock colour modes render as before the card: with Classic Chrome's look as on stock firmware (it puts PRO
+    # Neg. Hi back to stock; SEPIA's tone runs through PROVIA's family, same curves), without it as the flashed
+    # firmware's tuning area says (the v2 build keeps Classic Chrome data in PRO Neg. Hi)
+    ref_db = stock_db if any(s.own_data for s in SIMS_ON) else v2
     bad = []
     for cmx in (0, 2, 3, 4, 5, 6, 7):
         for a in (0, 1):
             for m_ in (0, 4, 5):
-                if m3x3(b2p, dbimg, cmx, a, m_) != m3x3(b2, stock_db, cmx, a, m_): bad.append(('3x3', cmx, a, m_))
-            if m2x2(b2p, dbimg, cmx, a) != m2x2(b2, stock_db, cmx, a): bad.append(('2x2', cmx, a))
+                if m3x3(b2p, dbimg, cmx, a, m_) != m3x3(b2, ref_db, cmx, a, m_): bad.append(('3x3', cmx, a, m_))
+            if m2x2(b2p, dbimg, cmx, a) != m2x2(b2, ref_db, cmx, a): bad.append(('2x2', cmx, a))
         for fn, kw in TONES:
-            if tone(b2p, dbimg, fn, cmx, **kw) != tone(b2, stock_db, fn, cmx, **kw): bad.append(('tone', cmx, hex(fn), kw))
-        if gain(b2p, dbimg, cmx) != gain(b2, stock_db, cmx): bad.append(('gain', cmx))
-    check('stock colour modes 0, 2-7 render as on stock firmware (3x3 × 3 modes, 2x2, chroma gain, tone × 9)', not bad, str(bad[:3]))
+            if tone(b2p, dbimg, fn, cmx, **kw) != tone(b2, ref_db, fn, cmx, **kw): bad.append(('tone', cmx, hex(fn), kw))
+        if gain(b2p, dbimg, cmx) != gain(b2, ref_db, cmx): bad.append(('gain', cmx))
+    check('stock colour modes 0, 2-7 render as before the card (3x3 × 3 modes, 2x2, chroma gain, tone × 9)', not bad, str(bad[:3]))
     cc = [tone(b2p, dbimg, fn, 1, **kw) for fn, kw in TONES]
-    check('Classic Chrome (colour mode 1): tone still curve 38 (16 in the fixed-curve mode)',
+    if any(s.own_data for s in SIMS_ON): check('Classic Chrome (colour mode 1): tone still curve 38 (16 in the fixed-curve mode)',
           all(c == [38, 38] or ('e4' in kw and c == [16, 16]) for c, (fn, kw) in zip(cc, TONES)), str(cc))
 
 # ---- 4 peaking

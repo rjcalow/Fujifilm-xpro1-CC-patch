@@ -25,12 +25,12 @@ def run(official, card_dir, opts=(), flash=DEFAULT_FLASH, work=os.path.join(RE, 
     digest = hashlib.sha256(open(boot, 'rb').read()).hexdigest()
     py = sys.executable
     o = list(opts)
-    val = lambda name, default: o[o.index(name) + 1] if name in o else default
-    four = '--four-looks' in o; peaking = four or '--peaking' in o
-    keys = [val('--sim', 'classic_chrome')] + [k for k in val('--add', 'superia,reggie,kodachrome' if four else '').split(',') if k]
+    from classic_chrome.convert import lineup_keys
+    keys, peaking = lineup_keys(o)
     sims = ','.join(keys)
-    steps = [('emu_chain', [official, boot, work]), ('emu_card', [official, boot, work, flash, sims])]
-    if val('--look', 'own') == 'own':
+    look = o[o.index('--look') + 1] if '--look' in o else 'own'
+    steps = [('emu_chain', [official, boot, work]), ('emu_card', [official, boot, work, flash, sims] + (['--no-rawconv'] if '--no-rawconv' in o else []))]
+    if look == 'own' and 'classic_chrome' in keys:
         steps.append(('emu_look', [official, boot, work, flash] + (['--peaking'] if peaking else [])))
     if len(keys) > 1 or peaking:
         steps.append(('emu_extras', [official, boot, work, flash, sims] + (['--peaking'] if peaking else [])))

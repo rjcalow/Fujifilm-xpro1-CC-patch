@@ -7,7 +7,8 @@ import struct
 from types import SimpleNamespace
 from classic_chrome.engine import card as _card
 from classic_chrome.engine.firmware import B2_BASE, MODULES
-from classic_chrome.config.film_sims import CLASSIC_CHROME as SIM
+from classic_chrome.config.film_sims import lineup
+SIM = lineup(['classic_chrome'])[0]
 from classic_chrome.features import menus as _m, rawconv as _r, looks as _l, texts as _t
 
 END = _card.END

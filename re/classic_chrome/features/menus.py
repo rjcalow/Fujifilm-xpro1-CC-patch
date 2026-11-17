@@ -25,6 +25,7 @@ NAME_MOVW, NAME_MOVT = 0x147c750, 0x147c754         # movw/movt r3, #NAME_TAB
 ROW_CAP = 0x147c748                                 # `cmp r4, #9`
 DRAW_SITE, DRAW_FN = 0x147c798, 0x1433604           # draw the row name (r2 = text ID)
 TEXT_STYLE, DRAW_STR = 0x148c0a0, 0x14328fc         # PR #3: text attributes by ID; draw an ASCII string
+STYLE_ID = 819                                      # text whose attributes the drawn names use (a menu name, 'B&W')
 ICON_TABS = {'A': (0x142aa4c, [0x14299fc, 0x142bd98]),   # stock icon table, record fields pointing at it
              'B': (0x1427320, [0x1429a00, 0x142bd9c])}
 ROW_MAPS = [0x1474e7c, 0x1474e3c]                   # MODE_FSIM → menu row, bytes
@@ -34,8 +35,8 @@ SLOT = 24                                           # bytes per drawn name
 class FilmSimMenu(Part):
     def __init__(self, sims):
         self.sims = sorted(sims, key=lambda s: s.row)
-        assert self.sims[0].row == 10 and self.sims[0].name_id, 'row 10 (with text IDs) comes first'
-        self.drawn = [s for s in self.sims if s.row > 10]
+        assert [s.row for s in self.sims] == list(range(10, 10 + len(self.sims))), 'rows 10, 11, ... (config.lineup)'
+        self.drawn = [s for s in self.sims if not s.name_id]          # names drawn from ASCII (no text ID)
 
     last = property(lambda s: s.sims[-1].row)
 
@@ -57,6 +58,8 @@ class FilmSimMenu(Part):
         for src, fields in ICON_TABS.values():
             for f in fields: fw.expect(f, src, 'icon-table pointer')
         self.icon_src = {k: fw.words(src, 10) for k, (src, _) in ICON_TABS.items()}
+        raw = fw.words(0x142e558, 10)                                  # RAW CONVERSION icons (for FilmSim.icons)
+        self.icons = {s.key: s.icons(self.icon_src['A'], self.icon_src['B'], raw) for s in self.sims}
         self.row_maps = []
         for t in ROW_MAPS:
             new = {}                                         # word address → value with the new rows' bytes
@@ -82,14 +85,14 @@ class FilmSimMenu(Part):
         put(self.LIST, b''.join(struct.pack('<II', r, 0) for r in STOCK_ROWS + [s.row for s in self.sims])
             + struct.pack('<II', END, 0))
         for k, t in self.icon_src.items():
-            put(self.ICON[k], struct.pack(f'<{10 + len(self.sims)}I', *t, *(s.icon_ab['AB'.index(k)] for s in self.sims)))
+            put(self.ICON[k], struct.pack(f'<{10 + len(self.sims)}I', *t, *(self.icons[s.key]['AB'.index(k)] for s in self.sims)))
         if len(self.sims) > 1:
             rows = [struct.pack('<3I', *r) for r in self.conv_rows]
             rows += [struct.pack('<3I', s.stored, END, s.mode_fsim) for s in self.sims]
             put(self.CONV, b''.join(rows) + struct.pack('<3I', 0xffff, 0xffff, 0xffff))
         names = list(self.names)
         for s in self.sims:
-            names.append(s.name_id if s.row == 10 else self.STRINGS + SLOT * self.drawn.index(s))
+            names.append(s.name_id if s.name_id else self.STRINGS + SLOT * self.drawn.index(s))
         put(self.NAMES, struct.pack(f'<{len(names)}I', *names))
         if self.drawn:
             put(self.STRINGS, b''.join(s.name.encode('ascii').ljust(SLOT, b'\0') for s in self.drawn))
@@ -103,7 +106,7 @@ class FilmSimMenu(Part):
     push {{r4, r5, r6, lr}}
     mov r4, r2
     mov r5, r1
-    movw r0, #{self.sims[0].name_id}
+    movw r0, #{STYLE_ID}
     bl {TEXT_STYLE:#x}
     mov r1, r0
     sub r2, r5, #1
@@ -138,5 +141,7 @@ class FilmSimMenu(Part):
         return {0x41: w + self.row_maps}
 
     def texts(self):
-        s = self.sims[0]
-        return {s.name_id: s.name, s.icon_id: s.icon}
+        out = {}
+        for s in self.sims:
+            if s.name_id: out.update({s.name_id: s.name, s.icon_id: s.icon})
+        return out
