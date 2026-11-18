@@ -1201,3 +1201,17 @@ X-Pro1 blob1 now decompiled too: `decompiled/xpro1_blob1_0x774000.c.gz` (Ghidra 
 * Live (card 28479b21 booted): POKE 0x1097f78 0x0000ffff → 0x0600ffff (MODE_FSIM 6 → 0x600): new CC shot DSCF2785
   → film code −1 (still PROVIA). Stubs at 0xc800 / 0xc840 on both fallbacks (0x600 → 8): image info +0x164 = 8,
   RAW block +8 = 8, menu opens on CLASSIC CHROME (user). RAM only; gone at power-off. FINDINGS §12.3 c.
+
+## Session 2026-11-18: every menu mapped (static) — `MENUS.md`, `MENU_MAP.md`, `tools/menumap.py`
+* Node scan of blob1 (241 nodes) rebuilt the tree: lists are (value, child) pairs, so nodes with children are
+  sub-menus. Roots: main MENU 0x776b24 (86–90 → SHOOTING 0x779754, 91–93 → PLAYBACK 0x775a3c, 94–96 → SET-UP
+  0x7765ec), Q menu 0x776214, ISO pop-up 0x77758c, 0x777624, 0x7793c4; 12 parentless pop-ups. Page nodes have setting
+  5 and list global item IDs (0–134).
+* Module 0x41: `FUN_01476b8c(kind, page, row)` → byte layout tables (15 bytes per page: count + 7 × (record, flag),
+  4 variants × 0x60) and `FUN_014796fc` → record arrays per kind; 30 kinds. Main kinds 0 / 4 / 6 line up one to one
+  with the blob1 page lists once the hidden items 113, 79, 68, 134 are skipped (35 / 14 / 21 slots).
+* Storage: getter `FUN_0078fb50` parsed for 269 settings (bank stride 0x12a; image settings +7·slot). COLOR,
+  SHARPNESS, HIGHLIGHT, SHADOW, NR = 3-bit fields (3 spare values each); PEAK level 0x111 and MF ASSIST 0x110 = 1 bit.
+* Row states: `FUN_00f0f2c8(setting, value, 0/1/2 = normal/greyed/hidden)`; `FUN_00f1ff44` picks the rule function
+  by node group. Option labels are indexed by list position (film-sim name table = list order).
+* 12 settings have table rows no list offers (BACKGROUND COLOR row 6, FRAMING GUIDELINE row 2, Fn row 4, …).

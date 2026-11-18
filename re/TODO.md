@@ -139,3 +139,27 @@ installed system-wide (use a venv).
       FILM SIMULATION, FINDINGS §3), where the selected level picks the tuning IDs (0xc88c / 0xc8a5 / 0xc8a7 and their
       LOW counterparts), and whether outline width or colour is a separate parameter. Then a features/ module driven
       like the line-up (levels as data), live test over USB first.
+      (2026-11-18) Found: blob2 FUN_010bfa6c picks a 14-byte parameter set per level from the tuning area (level 4 at
+      0xc87d, level 5 at 0xc88b, others at 0x10436 + 14·level; built-in default 10 20 40 80 80, then four pairs 80 00)
+      into 0x13a0f74..0x13a0f8e. The X-E2 (same generation) has peaking colours: MODE_MF_ASSIST_PEAKING_WHITE / RED /
+      BLUE next to HIGH / LOW (X-E2 blob1 strings 0xa2b27c..). Colour next: compare the X-E2's parameter sets for RED /
+      BLUE with WHITE (are the 80/00 pairs colour offsets?), then a live RAM test on the X-Pro1.
+      (2026-11-18) X-Pro1 data mapped: the two 14-byte sets the picker can choose, 0xc87d (LOW) and 0xc88b (HIGH), are
+      0a 20|28 78 7d 00 00 00 00 c0 64 c0 64 c0 64, i.e. they differ only in byte 1 (0xc88c, PR #3's 40 → 48). Then two
+      groups of 8 at 0xc89d (40 ff 40 ff ff ff ff ff) and 0xc8a5 (40 80 40 80 80 80 80 80), read as (gain, limit) pairs;
+      PR #3 raises the gains 0xc8a5 / 0xc8a7 to 120. No colour value among them. The X-E2's colour is a separate setting
+      (0 WHITE, 1 RED, 2 BLUE; blob1 name fns 0x8bd238 level / 0x8bd27c colour; its globals 0xcbf7d4 / 0xcbf7d8 only
+      feed a debug log). Its consumer is not in the X-E2's blob1/blob2 decompiles; next: X-E2 modules, and live pokes on
+      the X-Pro1 (MF, peaking HIGH; toggle MF assist after each poke so the set is re-read).
+      (2026-11-18, menu map) The menu side: MF ASSIST = setting 0x110 {STANDARD, PEAK}, PEAK level = setting 0x111
+      {LOW, HIGH} (node 0x77abdc, table 0x78da7c {1,–,1} {0,–,2}), each a **1-bit field** (0x9caf5c b5, 0x9caf5b b7;
+      byte 0x9caf5b has no free bit). A third level needs a wider field (getter/setter code) or the two levels
+      retuned instead. MENUS.md §8 #1.
+
+## Menus (mapped 2026-11-18, static: `MENUS.md`, `MENU_MAP.md`, `tools/menumap.py`)
+- [x] Whole menu tree, settings, storage fields, module-0x41 layouts, hidden items, defined-but-unlisted rows.
+- [ ] Camera confirmation of the storage map (USB PEEK, no visible change): read 0x9caf5b with PEAK LOW, then HIGH
+      (bit 7 should flip).
+- [ ] Cheapest live menu test: BACKGROUND COLOR row 6 (MENUS.md §8 #4). Visible: one extra row in that list.
+- [ ] Open (MENUS.md §9): code that fixes a menu's page count; where the Q menu is drawn; names of the pop-ups
+      without a parent (settings 0x136, 0x139, 0x13a, 0x149–0x14b, 0x12b, 0x161/0x162); setter 0x793814 vs getter.

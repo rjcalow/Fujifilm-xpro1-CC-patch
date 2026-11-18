@@ -173,6 +173,7 @@ restores everything.
 | `public/` | The Classic Chrome patch script and its user README |
 | `romdump/` | ROM dump card: builder, USB dump client and how-to ([`romdump/README.md`](romdump/README.md)) |
 | `re/FINDINGS.md` | Adding film simulations: menu model, free slots, where names and icons come from, camera tests |
+| `re/MENUS.md`, `re/MENU_MAP.md` | Every camera menu: how the menu tree, settings, screens and rules fit, how to change them, candidate adjustments; the full generated map (`re/tools/menumap.py`) |
 | `re/NOTES.md` | Session notes: memory map, formats, every finding with addresses |
 | `re/FAILURES.md` | SD-boot failure log, established facts (E1–E27) and working rules. Read before any camera test |
 | `re/TODO.md` | Open tasks |
